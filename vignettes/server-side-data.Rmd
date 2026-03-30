@@ -1,0 +1,200 @@
+---
+title: "Server-Side Data"
+format:
+  html:
+    minimal: true
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Server-Side Data}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+# Server-Side Data
+
+## Why server-side data?
+
+By default, `DataGrid()` sends **all rows** to the browser at once. Pagination, sorting, and filtering are handled entirely in JavaScript on the client side. This works well for small datasets, but becomes a problem with large ones:
+
+- **Performance**: sending thousands of rows as JSON slows down the initial page load.
+- **Memory**: the browser must hold the entire dataset in memory.
+- **Security**: all data is accessible in the browser, even rows not currently displayed.
+
+With **server-side data**, only the rows for the current page are sent to the browser. Pagination, sorting, and filtering are handled in R on the server. This keeps the app fast regardless of dataset size.
+
+## Client-side vs server-side
+
+| | `DataGrid()` (client-side) | `DataGridServer()` (server-side) |
+|---|---|---|
+| Data sent to browser | All rows at once | Current page only |
+| Pagination | JavaScript | R server |
+| Sorting | JavaScript | R server |
+| Filtering | JavaScript | R server |
+| Requires Shiny | No | Yes |
+
+## How it works
+
+`DataGridServer()` is a Shiny-only component. It uses a custom React component that:
+
+1. Manages pagination, sort, and filter state internally in the browser.
+2. Sends the current state to R via `input$<inputId>` whenever the user changes page, sorts a column, or applies a filter.
+3. R processes the data and sends back only the matching rows for the current page.
+
+## Basic usage
+
+A minimal server-side DataGrid app requires three things:
+
+1. `reactOutput()` in the UI
+2. `processGridParams()` to handle pagination, sorting, and filtering
+3. `DataGridServer()` to render the grid with the current page of data
+
+```r
+library(shiny)
+library(muiDataGrid)
+library(muiMaterial)
+library(dplyr)
+
+all_data <- dplyr::starwars |>
+  select(name, height, mass, birth_year, gender, homeworld)
+
+ui <- muiMaterialPage(
+  reactOutput("grid")
+)
+
+server <- function(input, output, session) {
+  output$grid <- renderReact({
+    result <- processGridParams(all_data, input$grid_params)
+
+    DataGridServer(
+      inputId = "grid_params",
+      rows = result$rows,
+      rowCount = result$rowCount,
+      initialPageSize = 10L,
+      pageSizeOptions = c(5L, 10L, 25L),
+      sx = list(height = 500)
+    )
+  })
+}
+
+shinyApp(ui, server)
+```
+
+## Key functions
+
+### `DataGridServer()`
+
+Renders a DataGrid with server-side pagination, sorting, and filtering.
+
+| Parameter | Description |
+|---|---|
+| `inputId` | Shiny input ID. Grid state is available as `input$<inputId>`. |
+| `rows` | Data frame with the rows for the **current page only**. |
+| `columns` | Column definitions (auto-generated from `rows` if NULL). |
+| `rowCount` | Total number of matching rows across all pages. |
+| `initialPageSize` | Initial number of rows per page (default 25). |
+| `pageSizeOptions` | Available page size choices (default `c(10, 25, 50, 100)`). |
+| `loading` | Show a loading indicator (default FALSE). |
+| `...` | Additional props passed to the MUI DataGrid. |
+
+### `processGridParams()`
+
+Applies pagination, sorting, and filtering to a data frame based on `input$<inputId>`.
+
+| Parameter | Description |
+|---|---|
+| `data` | The full data frame. |
+| `params` | `input$<inputId>` from `DataGridServer` (NULL on first render). |
+| `pageSize` | Default page size before first interaction (default 10). |
+
+Returns a list with:
+
+- `rows`: the data frame for the current page
+- `rowCount`: total number of matching rows (after filtering, before pagination)
+
+## Custom columns
+
+You can define custom columns the same way as with `DataGrid()`:
+
+```r
+server <- function(input, output, session) {
+  output$grid <- renderReact({
+    result <- processGridParams(all_data, input$grid_params)
+
+    DataGridServer(
+      inputId = "grid_params",
+      rows = result$rows,
+      rowCount = result$rowCount,
+      columns = list(
+        list(field = "name", headerName = "Name", flex = 1),
+        list(field = "height", headerName = "Height (cm)", type = "number", width = 120),
+        list(field = "mass", headerName = "Mass (kg)", type = "number", width = 120),
+        list(field = "gender", headerName = "Gender", width = 120)
+      ),
+      initialPageSize = 10L
+    )
+  })
+}
+```
+
+## Reading grid state
+
+The grid state is available in `input$<inputId>` as a list with three elements:
+
+- `pagination_model`: list with `page` (0-indexed) and `pageSize`
+- `sort_model`: list of sort items, each with `field` and `sort` ("asc" or "desc")
+- `filter_model`: list with `items`, each containing `field`, `operator`, and `value`
+
+You can use this to display diagnostics or trigger other reactive logic:
+
+```r
+server <- function(input, output, session) {
+  output$grid <- renderReact({
+    result <- processGridParams(all_data, input$grid_params)
+    DataGridServer("grid_params", rows = result$rows, rowCount = result$rowCount)
+  })
+
+  observe({
+    params <- input$grid_params
+    if (!is.null(params)) {
+      cat("Page:", params$pagination_model$page, "\n")
+      cat("Page size:", params$pagination_model$pageSize, "\n")
+    }
+  })
+}
+```
+
+## Custom server-side logic
+
+`processGridParams()` covers common sorting and filtering operators. If you need custom logic (e.g. querying a database), you can skip it and handle `input$<inputId>` directly:
+
+```r
+server <- function(input, output, session) {
+  output$grid <- renderReact({
+    params <- input$grid_params
+
+    page <- if (!is.null(params)) params$pagination_model$page else 0
+    page_size <- if (!is.null(params)) params$pagination_model$pageSize else 10
+
+    # Custom database query
+    result <- DBI::dbGetQuery(con, sprintf(
+      "SELECT * FROM my_table ORDER BY id LIMIT %d OFFSET %d",
+      page_size, page * page_size
+    ))
+    total <- DBI::dbGetQuery(con, "SELECT COUNT(*) FROM my_table")[[1]]
+
+    DataGridServer(
+      inputId = "grid_params",
+      rows = result,
+      rowCount = total,
+      initialPageSize = 10L
+    )
+  })
+}
+```

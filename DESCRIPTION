@@ -1,0 +1,32 @@
+Package: muiDataGrid
+Type: Package
+Title: 'MUI X Data Grid' for 'shiny' Apps and 'Quarto'
+Version: 0.1.1
+Authors@R: 
+    c(
+      person(given = "Felix", family = "Luginbuhl", role = c("aut", "cre"), email = "felix.luginbuhl@protonmail.ch")
+    )
+Maintainer: Felix Luginbuhl <felix.luginbuhl@protonmail.ch>
+Description:
+  Give access to 'MUI X Data Grid', a fast and extensible React
+  data table and React data grid, with filtering, sorting, aggregation,
+  and more.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Imports:
+    htmltools,
+    shiny.react (>= 0.4.0)
+Suggests:
+    knitr,
+    rmarkdown,
+    muiMaterial,
+    shiny,
+    dplyr,
+    testthat (>= 3.0.0)
+Remotes: lgnbhl/muiMaterial
+RoxygenNote: 7.3.3
+URL: https://felixluginbuhl.com/muiDataGrid
+BugReports: https://github.com/lgnbhl/muiDataGrid/issues
+Config/testthat/edition: 3
+VignetteBuilder: knitr

@@ -1,0 +1,16 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^js$
+^LICENSE\.md$
+^README\.Rmd$
+^\.github$
+^\.claude$
+^_pkgdown.yml
+^pkgdown
+^docs$
+^data-raw$
+^vignettes$
+^renovate.json
+^reinstall.sh$
+^cran-comments\.md$
+^CRAN-SUBMISSION$

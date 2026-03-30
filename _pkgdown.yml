@@ -1,0 +1,52 @@
+url: https://felixluginbuhl.com/muiDataGrid
+template:
+  bootstrap: 5
+  bootswatch: litera
+  ganalytics: UA-158089797-1
+  bslib:
+    primary: "#3399ff"
+
+authors:
+  Felix Luginbuhl:
+    href: "https://felixluginbuhl.com"
+
+llm-docs: true
+
+navbar:
+  left:
+  - text: Home
+    href: index.html
+  - text: Reference
+    href: reference/index.html
+  - text: Articles
+    menu:
+    - text: Layout
+      href: articles/layout.html
+    - text: Column Definition
+      href: articles/column-definition.html
+    - text: Column Dimensions
+      href: articles/column-dimensions.html
+    - text: Row Definition
+      href: articles/row-definition.html
+    - text: Row Updates
+      href: articles/row-updates.html
+    - text: Row Height
+      href: articles/row-height.html
+    - text: Row Spanning
+      href: articles/row-spanning.html
+    - text: Styling basics
+      href: articles/styling-basics.html
+    - text: Custom with React JS
+      href: articles/custom-react-js.html
+  - text: News
+    href: news/index.html
+
+  right:
+   - icon: fa-linkedin
+     href: https://www.linkedin.com/in/felixluginbuhl
+   - icon: fa-twitter
+     href: https://twitter.com/FelixLuginbuhl
+   - icon: fa-github
+     href: https://github.com/lgnbhl/muiDataGrid
+   - icon: fa-home
+     href: http://felixluginbuhl.com

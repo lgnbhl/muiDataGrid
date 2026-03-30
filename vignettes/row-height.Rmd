@@ -1,0 +1,184 @@
+---
+title: "Row Height"
+format:
+  html:
+    minimal: true
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Row Height}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(muiDataGrid)
+library(dplyr)
+```
+
+# Row Height
+
+The Data Grid provides flexible options for controlling row height, from static heights to dynamic sizing based on content.
+
+## Static Row Height
+
+### Using rowHeight Prop
+
+Set a uniform height for all rows:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  rowHeight = 80
+)
+```
+
+### Default Height
+
+The default row height is 52 pixels:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head()
+  # Default rowHeight = 52
+)
+```
+
+## Column Header Height
+
+Customize the height of the column header using the `columnHeaderHeight` prop:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass, species) |> head(),
+  columnHeaderHeight = 80
+)
+```
+
+## Variable Row Height
+
+### Using getRowHeight
+
+Set different heights for different rows using a function:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  getRowHeight = JS("
+    function(params) {
+      // Make every third row taller
+      return params.id % 3 === 0 ? 80 : 52;
+    }
+  ")
+)
+```
+
+## Dynamic Row Height
+
+### Auto Height
+
+Use 'auto' to let rows expand to fit their content:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, films) |> head(),
+  columns = list(
+    list(field = "name", width = 180),
+    list(field = "films", width = 400)
+  ),
+  getRowHeight = JS("function() { return 'auto'; }")
+)
+```
+
+### With Estimated Height
+
+Provide an estimated height for better scrolling performance:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, films) |> head(10),
+  columns = list(
+    list(field = "name", width = 180),
+    list(field = "films", width = 400)
+  ),
+  getRowHeight = JS("function() { return 'auto'; }"),
+  getEstimatedRowHeight = JS("function() { return 80; }")
+)
+```
+
+## Row Density
+
+### Density Presets
+
+Use predefined density settings to quickly adjust row height:
+
+```{r}
+# Compact density
+DataGrid(
+  rows = starwars |> select(name, height, mass, species) |> head(),
+  density = "compact"
+)
+```
+
+```{r}
+# Standard density (default)
+DataGrid(
+  rows = starwars |> select(name, height, mass, species) |> head(),
+  density = "standard"
+)
+```
+
+```{r}
+# Comfortable density
+DataGrid(
+  rows = starwars |> select(name, height, mass, species) |> head(),
+  density = "comfortable"
+)
+```
+
+Density values affect row height:
+- "compact": ~52px
+- "standard": ~52px (default)
+- "comfortable": ~62px
+
+## Row Spacing
+
+### Using getRowSpacing
+
+Add vertical spacing between rows:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass, species) |> head(),
+  getRowSpacing = JS("
+    function(params) {
+      return {
+        top: params.isFirstVisible ? 0 : 5,
+        bottom: params.isLastVisible ? 0 : 5
+      };
+    }
+  ")
+)
+```
+
+## Border-Based Spacing
+
+### Using Borders for Visual Separation
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass, species) |> head(10),
+  sx = list(
+    "& .MuiDataGrid-row" = list(
+      borderBottom = "2px solid #e0e0e0",
+      marginBottom = "4px"
+    )
+  )
+)
+```

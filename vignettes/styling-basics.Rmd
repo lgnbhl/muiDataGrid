@@ -1,0 +1,478 @@
+---
+title: "Styling Basics"
+format:
+  html:
+    minimal: true
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Styling Basics}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(muiDataGrid)
+library(dplyr)
+```
+
+# Styling Basics
+
+The Data Grid CSS can be easily customized using various approaches. This guide covers the fundamental styling methods available.
+
+## Using the sx Prop
+
+For one-off styles, the `sx` prop can be used. It lets you apply both simple and complex customizations directly to the Data Grid element. The keys accepted can be any CSS property as well as custom properties provided by MUI.
+
+### Basic Styling
+
+Apply simple styles like margin and padding:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass, species) |> head(),
+  sx = list(
+    m = 2  # margin: 2 * 8px = 16px
+  )
+)
+```
+
+### Advanced Styling with Borders and Shadows
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass, species) |> head(),
+  sx = list(
+    boxShadow = 2,
+    border = 2,
+    borderColor = "primary.light",
+    "& .MuiDataGrid-cell:hover" = list(
+      color = "primary.main"
+    )
+  )
+)
+```
+
+### Custom Background and Typography
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  sx = list(
+    backgroundColor = "#f5f5f5",
+    "& .MuiDataGrid-columnHeaders" = list(
+      color = "blue",
+      fontSize = 20
+    ),
+    "& .MuiDataGrid-cell" = list(
+      borderBottom = "1px solid #e0e0e0"
+    )
+  )
+)
+```
+
+## Styling Column Headers
+
+The column definition provides properties to apply styles to column headers:
+
+### headerClassName
+
+Apply custom class names to column headers:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  columns = list(
+    list(
+      field = "name",
+      headerName = "Character Name",
+      headerClassName = "custom-header",
+      width = 200
+    ),
+    list(
+      field = "height",
+      headerName = "Height (cm)",
+      headerClassName = "custom-header",
+      width = 120
+    ),
+    list(
+      field = "mass",
+      headerName = "Mass (kg)",
+      headerClassName = "custom-header",
+      width = 120
+    )
+  ),
+  sx = list(
+    "& .custom-header" = list(
+      backgroundColor = "#f0f0f0",
+      fontWeight = "bold"
+    )
+  )
+)
+```
+
+### headerAlign
+
+Align the content of column headers:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  columns = list(
+    list(
+      field = "name",
+      headerName = "Character",
+      headerAlign = "left",
+      width = 200
+    ),
+    list(
+      field = "height",
+      headerName = "Height",
+      headerAlign = "center",
+      width = 120
+    ),
+    list(
+      field = "mass",
+      headerName = "Mass",
+      headerAlign = "right",
+      width = 120
+    )
+  )
+)
+```
+
+## Styling Rows
+
+### Using getRowClassName
+
+The `getRowClassName` prop applies custom CSS classes to rows based on their data:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass, species) |> head(),
+  getRowClassName = JS("
+    function(params) {
+      if (params.row.species === 'Droid') {
+        return 'droid-row';
+      } else if (params.row.species === 'Human') {
+        return 'human-row';
+      }
+      return '';
+    }
+  "),
+  sx = list(
+    "& .droid-row" = list(
+      backgroundColor = "#e3f2fd",
+      "&:hover" = list(
+        backgroundColor = "#bbdefb"
+      )
+    ),
+    "& .human-row" = list(
+      backgroundColor = "#fff3e0",
+      "&:hover" = list(
+        backgroundColor = "#ffe0b2"
+      )
+    )
+  )
+)
+```
+
+### Conditional Row Styling
+
+Style rows based on numeric values:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  getRowClassName = JS("
+    function(params) {
+      if (params.row.height > 190) {
+        return 'tall-character';
+      } else if (params.row.height < 100) {
+        return 'short-character';
+      }
+      return '';
+    }
+  "),
+  sx = list(
+    "& .tall-character" = list(
+      backgroundColor = "#c8e6c9",
+      fontWeight = "bold"
+    ),
+    "& .short-character" = list(
+      backgroundColor = "#ffccbc"
+    )
+  )
+)
+```
+
+## Styling Cells
+
+### Using cellClassName in Column Definition
+
+Apply CSS classes to all cells in a specific column:
+
+```{r}
+DataGrid(
+  rows = starwars |> 
+    select(name, height, mass) |>
+    mutate(bmi = mass / (height/100)^2) |>
+    head(15),
+  columns = list(
+    list(
+      field = "name",
+      headerName = "Name",
+      width = 180,
+      cellClassName = "name-cell"
+    ),
+    list(
+      field = "height",
+      headerName = "Height",
+      width = 100
+    ),
+    list(
+      field = "mass",
+      headerName = "Mass",
+      width = 100
+    ),
+    list(
+      field = "bmi",
+      headerName = "BMI",
+      width = 100,
+      cellClassName = JS("
+        function(params) {
+          if (params.value == null) return '';
+          if (params.value > 30) return 'high-bmi';
+          if (params.value < 18.5) return 'low-bmi';
+          return 'normal-bmi';
+        }
+      ")
+    )
+  ),
+  sx = list(
+    "& .name-cell" = list(
+      fontWeight = "500"
+    ),
+    "& .high-bmi" = list(
+      backgroundColor = "#ffcdd2",
+      color = "#c62828"
+    ),
+    "& .low-bmi" = list(
+      backgroundColor = "#fff9c4",
+      color = "#f57f17"
+    ),
+    "& .normal-bmi" = list(
+      backgroundColor = "#c8e6c9",
+      color = "#2e7d32"
+    )
+  )
+)
+```
+
+### Using getCellClassName at Grid Level
+
+Apply conditional styling to cells across all columns:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> filter(is.na(mass)) |> head(),
+  getCellClassName = JS("
+    function(params) {
+      if (params.field === 'name') return '';
+      if (params.value == null) return 'missing-value';
+      return '';
+    }
+  "),
+  sx = list(
+    "& .missing-value" = list(
+      backgroundColor = "lightblue",
+      fontStyle = "italic"
+    )
+  )
+)
+```
+
+## Cell Alignment
+
+Use the `align` property to change the alignment of cell content:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass, species) |> head(),
+  columns = list(
+    list(
+      field = "name",
+      headerName = "Character",
+      align = "left",
+      headerAlign = "left",
+      width = 180
+    ),
+    list(
+      field = "height",
+      headerName = "Height",
+      align = "center",
+      headerAlign = "center",
+      width = 120
+    ),
+    list(
+      field = "mass",
+      headerName = "Mass",
+      align = "right",
+      headerAlign = "right",
+      width = 120
+    ),
+    list(
+      field = "species",
+      headerName = "Species",
+      align = "center",
+      headerAlign = "center",
+      width = 150
+    )
+  )
+)
+```
+
+## Striped Rows
+
+Create alternating row colors using `indexRelativeToCurrentPage`:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass, species) |> head(),
+  getRowClassName = JS("
+    function(params) {
+      return params.indexRelativeToCurrentPage % 2 === 0 ? 'even' : 'odd';
+    }
+  "),
+  sx = list(
+    "& .even" = list(
+      backgroundColor = "#f5f5f5"
+    ),
+    "& .odd" = list(
+      backgroundColor = "white"
+    )
+  )
+)
+```
+
+### Striped Rows with Hover Effect
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass, homeworld) |> head(),
+  getRowClassName = JS("
+    function(params) {
+      return params.indexRelativeToCurrentPage % 2 === 0 ? 'even' : 'odd';
+    }
+  "),
+  sx = list(
+    "& .even" = list(
+      backgroundColor = "#fafafa",
+      "&:hover" = list(
+        backgroundColor = "#eeeeee"
+      )
+    ),
+    "& .odd" = list(
+      backgroundColor = "white",
+      "&:hover" = list(
+        backgroundColor = "#f5f5f5"
+      )
+    )
+  )
+)
+```
+
+## Complete Styling Example
+
+Here's a comprehensive example combining multiple styling techniques:
+
+```{r}
+starwars_styled <- starwars |>
+  select(name, height, mass, species, homeworld) |>
+  head()
+
+DataGrid(
+  rows = starwars_styled,
+  columns = list(
+    list(
+      field = "name",
+      headerName = "Character",
+      width = 180,
+      cellClassName = "bold-cell",
+      headerAlign = "left"
+    ),
+    list(
+      field = "height",
+      headerName = "Height (cm)",
+      width = 120,
+      type = "number",
+      align = "right",
+      headerAlign = "right"
+    ),
+    list(
+      field = "mass",
+      headerName = "Mass (kg)",
+      width = 120,
+      type = "number",
+      align = "right",
+      headerAlign = "right"
+    ),
+    list(
+      field = "species",
+      headerName = "Species",
+      width = 130,
+      align = "center",
+      headerAlign = "center"
+    ),
+    list(
+      field = "homeworld",
+      headerName = "Homeworld",
+      width = 140
+    )
+  ),
+  getRowClassName = JS("
+    function(params) {
+      const baseClass = params.indexRelativeToCurrentPage % 2 === 0 ? 'even' : 'odd';
+      if (params.row.species === 'Droid') {
+        return baseClass + ' droid';
+      }
+      return baseClass;
+    }
+  "),
+  sx = list(
+    border = 2,
+    borderColor = "primary.light",
+    borderRadius = 2,
+    "& .MuiDataGrid-columnHeaders" = list(
+      backgroundColor = "#1976d2",
+      color = "darkgreen",
+      fontSize = 14,
+      fontWeight = "bold"
+    ),
+    "& .bold-cell" = list(
+      fontWeight = "600"
+    ),
+    "& .even" = list(
+      backgroundColor = "#fafafa"
+    ),
+    "& .odd" = list(
+      backgroundColor = "white"
+    ),
+    "& .droid" = list(
+      backgroundColor = "#e3f2fd !important"
+    ),
+    "& .MuiDataGrid-cell:hover" = list(
+      color = "primary.main"
+    ),
+    "& .MuiDataGrid-row:hover" = list(
+      backgroundColor = "#f5f5f5"
+    )
+  )
+)
+```

@@ -1,0 +1,484 @@
+---
+title: "Column Definition"
+format:
+  html:
+    minimal: true
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Column Definition}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(muiDataGrid)
+library(dplyr)
+```
+
+# Column Definition
+
+Column definitions in the Data Grid specify how data is displayed, formatted, and interacted with. Each column has a unique field name and various properties that control its behavior.
+
+## Core Properties
+
+### field
+
+The unique identifier for the column (required). Must match a field in the row data.
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  columns = list(
+    list(field = "name"),
+    list(field = "height"),
+    list(field = "mass")
+  )
+)
+```
+
+### headerName
+
+The text displayed in the column header. Defaults to the field name if not specified.
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  columns = list(
+    list(field = "name", headerName = "Character Name"),
+    list(field = "height", headerName = "Height (cm)"),
+    list(field = "mass", headerName = "Weight (kg)")
+  )
+)
+```
+
+### description
+
+Tooltip text shown when hovering over the column header.
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  columns = list(
+    list(
+      field = "name",
+      headerName = "Name",
+      description = "The character's full name"
+    ),
+    list(
+      field = "height",
+      headerName = "Height",
+      description = "Height in centimeters"
+    ),
+    list(
+      field = "mass",
+      headerName = "Mass",
+      description = "Weight in kilograms"
+    )
+  )
+)
+```
+
+### type
+
+The column type affects formatting and default behavior. Available types:
+- `"string"` (default)
+- `"number"`
+- `"date"`
+- `"dateTime"`
+- `"boolean"`
+- `"singleSelect"`
+
+```{r}
+starwars_typed <- starwars |>
+  select(name, height, birth_year) |>
+  mutate(is_tall = height > 180) |>
+  head()
+
+DataGrid(
+  rows = starwars_typed,
+  columns = list(
+    list(field = "name", type = "string", headerName = "Name", width = 200),
+    list(field = "height", type = "number", headerName = "Height", width = 120),
+    list(field = "birth_year", type = "number", headerName = "Birth Year", width = 120),
+    list(field = "is_tall", type = "boolean", headerName = "Tall?", width = 100)
+  )
+)
+```
+
+## Display Properties
+
+### width
+
+Fixed column width in pixels.
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  columns = list(
+    list(field = "name", width = 250),
+    list(field = "height", width = 120),
+    list(field = "mass", width = 120)
+  )
+)
+```
+
+### flex
+
+Flexible column width as a proportion of available space. Cannot be used with `width`.
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  columns = list(
+    list(field = "name", flex = 2),
+    list(field = "height", flex = 1),
+    list(field = "mass", flex = 1)
+  )
+)
+```
+
+### minWidth / maxWidth
+
+Constraints for column width when using `flex` or resizing.
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  columns = list(
+    list(field = "name", flex = 1, minWidth = 150),
+    list(field = "height", flex = 1, minWidth = 80, maxWidth = 120),
+    list(field = "mass", flex = 1, minWidth = 80, maxWidth = 120)
+  )
+)
+```
+
+### align / headerAlign
+
+Text alignment for cell content and header.
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  columns = list(
+    list(
+      field = "name", 
+      headerAlign = "left", 
+      align = "left", 
+      width = 200
+    ),
+    list(
+      field = "height", 
+      headerAlign = "center", 
+      align = "right", 
+      width = 120
+    ),
+    list(
+      field = "mass", 
+      headerAlign = "center", 
+      align = "right", 
+      width = 120
+    )
+  )
+)
+```
+
+### hide
+
+Hide a column while keeping it in the data.
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  columns = list(
+    list(field = "name", width = 200),
+    list(field = "height", width = 120),
+    list(field = "mass", width = 120, hide = TRUE),
+    list(field = "species", width = 150)
+  )
+)
+```
+
+## Interaction Properties
+
+### sortable
+
+Enable or disable sorting for the column (default: `TRUE`).
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  columns = list(
+    list(field = "name", sortable = TRUE, width = 200),
+    list(field = "height", sortable = TRUE, width = 120),
+    list(field = "mass", sortable = FALSE, width = 120)
+  )
+)
+```
+
+### filterable
+
+Enable or disable filtering for the column (default: `TRUE`).
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  columns = list(
+    list(field = "name", filterable = TRUE, width = 200),
+    list(field = "height", filterable = TRUE, width = 120),
+    list(field = "mass", filterable = FALSE, width = 150)
+  )
+)
+```
+
+### editable
+
+Make the column editable (default: `FALSE`).
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  columns = list(
+    list(field = "name", editable = FALSE, width = 200),
+    list(field = "height", editable = TRUE, width = 120),
+    list(field = "mass", editable = TRUE, width = 120)
+  )
+)
+```
+
+### resizable
+
+Enable column resizing by dragging borders (default: `TRUE`).
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  columns = list(
+    list(field = "name", resizable = TRUE, width = 200),
+    list(field = "height", resizable = TRUE, width = 120),
+    list(field = "mass", resizable = FALSE, width = 120)
+  )
+)
+```
+
+## Value Formatting
+
+### valueFormatter
+
+Format the displayed value without changing the underlying data.
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  columns = list(
+    list(field = "name", width = 200),
+    list(
+      field = "height",
+      headerName = "Height",
+      width = 150,
+      valueFormatter = JS("function(value) { return value ? value + ' cm' : 'Unknown'; }")
+    ),
+    list(
+      field = "mass",
+      headerName = "Mass",
+      width = 150,
+      valueFormatter = JS("function(value) { return value ? value + ' kg' : 'Unknown'; }")
+    )
+  )
+)
+```
+
+### valueGetter
+
+Compute or derive values from row data.
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  columns = list(
+    list(field = "name", width = 150),
+    list(field = "height", width = 100),
+    list(field = "mass", width = 100),
+    list(
+      field = "bmi",
+      headerName = "BMI",
+      width = 100,
+      type = "number",
+      valueGetter = JS("
+        function(value, row) {
+          if (row.height && row.mass) {
+            const heightInM = row.height / 100;
+            return Math.round(row.mass / (heightInM * heightInM) * 10) / 10;
+          }
+          return null;
+        }
+      ")
+    )
+  )
+)
+```
+
+### valueSetter
+
+Control how edited values are stored (for editable columns):
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  columns = list(
+    list(field = "name"),
+    list(
+      field = "height",
+      editable = TRUE,
+      valueSetter = JS("
+        function(value, row) {
+          const numValue = Number(value);
+          if (!isNaN(numValue) && numValue > 0) {
+            row.height = numValue;
+            return row;
+          }
+          return row; // Return unchanged if invalid
+        }
+      ")
+    ),
+    list(field = "mass")
+  )
+)
+```
+
+## Advanced Properties
+
+### renderCell
+
+Custom cell rendering with React components:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  columns = list(
+    list(
+      field = "name",
+      renderCell = JS("
+        function(params) {
+          return React.createElement('strong', {}, params.value);
+        }
+      ")
+    ),
+    list(field = "height"),
+    list(field = "mass")
+  )
+)
+```
+
+### renderHeader
+
+Custom header rendering:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  columns = list(
+    list(
+      field = "name",
+      renderHeader = JS("
+        function(params) {
+          return React.createElement('strong', {}, params.colDef.headerName || params.field);
+        }
+      ")
+    ),
+    list(field = "height"),
+    list(field = "mass")
+  )
+)
+```
+
+## Column Grouping
+
+Group multiple columns under a common header:
+
+```{r}
+DataGrid(
+  rows = starwars |> 
+    select(name, height, mass, hair_color, skin_color) |> 
+    head(),
+  columns = list(
+    list(field = "name"),
+    list(field = "height"),
+    list(field = "mass"),
+    list(field = "hair_color"),
+    list(field = "skin_color")
+  ),
+  columnGroupingModel = list(
+    list(
+      groupId = "physical",
+      headerName = "Physical Attributes",
+      children = list(
+        list(field = "height"),
+        list(field = "mass")
+      )
+    ),
+    list(
+      groupId = "appearance",
+      headerName = "Appearance",
+      children = list(
+        list(field = "hair_color"),
+        list(field = "skin_color")
+      )
+    )
+  )
+)
+```
+
+## Complete Example
+
+Here's a comprehensive example using many column properties:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass, hair_color, skin_color) |> head(10),
+  columns = list(
+    list(
+      field = "name",
+      headerName = "Character Name",
+      description = "Name of the Star Wars character",
+      width = 180,
+      sortable = TRUE,
+      filterable = TRUE,
+      hideable = FALSE,
+      pinnable = TRUE,
+      align = "left"
+    ),
+    list(
+      field = "height",
+      headerName = "Height",
+      description = "Height in centimeters",
+      type = "number",
+      width = 100,
+      align = "center",
+      headerAlign = "center",
+      valueFormatter = JS("function(value) { return value ? value + ' cm' : 'N/A'; }")
+    ),
+    list(
+      field = "mass",
+      headerName = "Mass",
+      description = "Mass in kilograms",
+      type = "number",
+      width = 100,
+      align = "center",
+      headerAlign = "center",
+      valueFormatter = JS("function(value) { return value ? value + ' kg' : 'N/A'; }")
+    )
+  ),
+  initialState = list(
+    pagination = list(
+      paginationModel = list(pageSize = 5)
+    )
+  )
+)
+```

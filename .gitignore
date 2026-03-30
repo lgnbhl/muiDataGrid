@@ -1,0 +1,13 @@
+docs
+js/node_modules
+js/README.MD
+.Rproj.user
+inst/doc
+.Rhistory
+.Rdata
+.httr-oauth
+.DS_Store
+.claude
+/.quarto/
+pkgdown
+CRAN-SUBMISSION

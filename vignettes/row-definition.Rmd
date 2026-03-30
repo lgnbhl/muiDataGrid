@@ -1,0 +1,68 @@
+---
+title: "Row Definition"
+format:
+  html:
+    minimal: true
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Row Definition}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(muiDataGrid)
+library(dplyr)
+```
+
+# Row Definition
+
+Rows are the fundamental data units in the Data Grid. This guide covers how to feed data to the grid and work with row identifiers.
+
+## Feeding Data to the Grid
+
+### Basic Data Loading
+
+The grid automatically handles R data frames and tibbles through the `rows` prop:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass, species) |> head()
+)
+```
+
+## Row Identifier
+
+### Automatic ID Generation
+
+The **muiDataGrid** package automatically generates unique IDs for your rows, so you don't need to create an `id` column manually:
+
+```{r}
+# No need to add id column - it's handled automatically
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head()
+)
+```
+
+### Pagination
+
+For large datasets, consider using pagination:
+
+```{r}
+# Show a subset of data
+DataGrid(
+  rows = starwars |> head(10),
+  initialState = list(
+    pagination = list(
+      paginationModel = list(pageSize = 5)
+    )
+  )
+)
+```

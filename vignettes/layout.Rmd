@@ -1,0 +1,93 @@
+---
+title: "Layout"
+format:
+  html:
+    minimal: true
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Layout}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(muiDataGrid)
+library(dplyr)
+```
+
+# Layout
+
+The Data Grid offers multiple options to control its layout.
+
+## Height
+
+### Fixed Height
+
+You can specify a fixed height using CSS or the `sx` prop:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(10),
+  sx = list(height = 300)
+)
+```
+
+### Auto Height
+
+The Data Grid can automatically adjust its height to fit the content by using the `autoHeight` prop:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(10),
+  autoHeight = TRUE
+)
+```
+
+
+## Width
+
+### Fluid Width
+
+By default, the Data Grid takes the full width of its container. The columns flex to fill the available space.
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass, species) |> head(10)
+)
+```
+
+### Fixed Width
+
+You can specify a fixed width using CSS or the `sx` prop:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(10),
+  sx = list(width = 600)
+)
+```
+
+## Pagination
+
+You can add pagination and adjust the page size using `initialState` (here 5 rows per page):
+
+```{r}
+library(muiDataGrid)
+library(dplyr)
+
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(10),
+  initialState = list(
+    pagination = list(
+      paginationModel = list(pageSize = 5)
+    )
+  )
+)
+```

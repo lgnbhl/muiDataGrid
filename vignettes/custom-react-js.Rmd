@@ -1,0 +1,401 @@
+---
+title: "Custom with React JS"
+format:
+  html:
+    minimal: true
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Custom with React JS}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(muiDataGrid)
+library(dplyr)
+```
+
+## Custom columns using Javascript
+
+Using `valueGetter` or `valueGetter`:
+
+```{r}
+# https://stackoverflow.com/a/79508826
+library(dplyr)
+
+# "id" column is mandatory
+df <- starwars |>
+  select(1:2) |>
+  mutate(
+    id = row_number()
+)
+
+DataGrid(
+  sx = list(height = 300),
+  rows = df,
+  columns = list(
+    list(
+      field = "name"
+    ),
+    list(
+      field = "height",
+      type = "number",
+      headerName = "Height",
+      description = "Height in meters",
+      valueGetter = JS("
+        function(value) {
+          if (value == null) { return ''; }
+          return value / 100 }"
+      ),
+      valueFormatter = JS("
+        function(value) {
+          if (value == '') { return ''; }
+          return `${value} cm`}"
+      )
+    )
+  )
+)
+```
+
+Using `valueGetter` and `renderCell`:
+
+```{r}
+library(shiny.react)
+
+# "id" column is mandatory
+df <- starwars |>
+  select(1:2) |>
+  mutate(
+    id = row_number()
+)
+
+DataGrid(
+  sx = list(height = 300),
+  rows = df,
+  columns = list(
+    list(
+      field = "name"
+    ),
+    list(
+      field = "height",
+      valueGetter = JS("function(value) { return value / 100 }"),
+      renderCell = JS("function(params) { return `${params.value} m` }")
+    )
+  )
+)
+```
+
+## Custom table using React JS Components
+
+If you don't know React, I would suggest to ask an LLM to create a React function for you. All the examples below have been created using the help of an LLM:
+
+Below an simple example to add a custom image in your table (i.e. wrapping the value in an styled "img" HTML tag):
+
+```{r}
+library(shiny.react)
+
+df <- data.frame(
+  country = c("Switzerland", "France"),
+  img = c("https://flagsapi.com/CH/flat/64.png", "https://flagsapi.com/FR/flat/64.png")
+)
+
+DataGrid(
+  sx = list(height = 300),
+  rows = df,
+  columns = list(
+    list(
+      field = "img",
+      headerName = "",
+      width = 10,
+      sortable = FALSE,
+      disableColumnMenu = TRUE,
+      renderCell = JS("
+        function(params) { 
+          return React.createElement(
+            'img',
+            {
+              src: params.value,
+              alt: 'flag',
+              style: {
+                width: '100%',
+                height: '100%',
+                objectFit: 'contain',
+                display: 'block'
+              }
+            }
+          );
+        }"
+      )
+    ),
+    list(
+      field = "country"
+    )
+  )
+)
+```
+
+You can create an React function to color the values and cell background following a logic:
+
+```{r}
+df <- data.frame(
+  id = c(1,2,3,4,5),
+  value = c(1,2,3,4,5)
+)
+
+DataGrid(
+  rows = df,
+  columns = list(
+    list(
+      field = "value",
+      renderCell = JS("
+        function(params) { 
+        // Colored Value
+        const ColoredValue = ({ value }) => {
+          let bgColor = '#e8f5e9'; // light green
+          let textColor = '#2e7d32';
+          
+          if (value < 2) {
+            bgColor = '#ffebee'; // light red
+            textColor = '#c62828';
+          } else if (value < 3) {
+            bgColor = '#ffe0b2'; // light orange
+            textColor = '#e65100';
+          } else if (value < 4) {
+            bgColor = '#fff9c4'; // light yellow
+            textColor = '#f57f17';
+          }
+          return React.createElement(
+            'div',
+            {
+              style: {
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: bgColor,
+                color: textColor,
+                fontWeight: '600',
+                fontSize: '13px',
+                margin: '-8px -16px', // Negative margin to counteract cell padding
+                padding: '8px 16px'   // Add padding back to maintain text position
+              }
+            },
+            value.toFixed(1)
+          );
+        };
+        return React.createElement(ColoredValue, { value: params.value })
+        }")
+    )
+  )
+)
+```
+
+You can also use [Google Material Icons](https://fonts.google.com/icons) by loading the font stylesheet with `htmltools::tags$link()`:
+
+```{r}
+df <- data.frame(
+  id = c(1,2,3,4,5),
+  value = c(1,2,3,4,5)
+)
+
+htmltools::tagList(
+  htmltools::tags$link(
+    rel = "stylesheet",
+    href = "https://fonts.googleapis.com/icon?family=Material+Icons+Outlined"
+  ),
+  DataGrid(
+    rows = df,
+    columns = list(
+      list(
+        field = "value",
+        renderCell = JS("
+          function(params) {
+          const ColoredValue = ({ value }) => {
+            let bgColor = '#e8f5e9'; // light green
+            let textColor = '#2e7d32';
+            let icon = 'sentiment_very_satisfied'; // very happy
+
+            if (value < 2) {
+              bgColor = '#ffebee'; // light red
+              textColor = '#c62828';
+              icon = 'sentiment_very_dissatisfied'; // very sad
+            } else if (value < 3) {
+              bgColor = '#ffe0b2'; // light orange
+              textColor = '#e65100';
+              icon = 'sentiment_dissatisfied'; // dissatisfied
+            } else if (value < 4) {
+              bgColor = '#fff9c4'; // light yellow
+              textColor = '#f57f17';
+              icon = 'sentiment_satisfied'; // satisfied
+            }
+
+            return React.createElement(
+              'div',
+              {
+                style: {
+                  width: '100%',
+                  height: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  backgroundColor: bgColor,
+                  color: textColor,
+                  fontWeight: '600',
+                  fontSize: '13px',
+                  margin: '-8px -16px',
+                  padding: '8px 16px'
+                }
+              },
+              React.createElement('span', {
+                className: 'material-icons-outlined',
+                style: { fontSize: '18px' }
+              }, icon),
+              value.toFixed(1)
+            );
+          };
+          return React.createElement(ColoredValue, { value: params.value })
+          }")
+      )
+    )
+  )
+) |>
+  htmltools::browsable() # show in viewer
+```
+
+You can add a React function to create a custom progress bar:
+
+```{r}
+df <- data.frame(
+  id = c(1, 2, 3),
+  value = c(20, 60, 80)
+)
+
+DataGrid(
+  rows = df,
+  columns = list(
+    list(
+      field = "value",
+      renderCell = JS("
+        function(params) { 
+        // Progress Bar Component
+        const ProgressBar = ({ value }) => {
+          return React.createElement(
+            'div',
+            {
+              style: {
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center'
+              }
+            },
+            React.createElement(
+              'div',
+              {
+                style: {
+                  width: '100%',
+                  height: '20px',
+                  backgroundColor: '#e0e0e0',
+                  overflow: 'hidden',
+                  position: 'relative'
+                }
+              },
+              React.createElement('div', {
+                style: {
+                  width: `${value}%`,
+                  height: '100%',
+                  backgroundColor: value < 30 ? '#f44336' : value < 70 ? '#ff9800' : '#4caf50',
+                  transition: 'width 0.3s ease'
+                }
+              }),
+              React.createElement(
+                'span',
+                {
+                  style: {
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    color: '#333',
+                    textShadow: '0 0 2px rgba(255,255,255,0.8)'
+                  }
+                },
+                `${value}%`
+              )
+            )
+          );
+        };
+        return React.createElement(ProgressBar, { value: params.value })
+        }")
+    )
+  )
+)
+```
+
+Here another example using React with a Rating component:
+
+```{r}
+df <- data.frame(
+  id = c(1, 2, 3),
+  value = c(1, 3, 6)
+)
+
+DataGrid(
+  rows = df,
+  columns = list(
+    list(
+      field = "value",
+      renderCell = JS("
+        function(params) { 
+        // Rating Component
+        const Rating = ({ value }) => {
+          const maxStars = 5;
+          const filledStars = Math.max(1, Math.min(5, Math.round(value))); // Clamp value between 1-5
+          
+          return React.createElement(
+            'div',
+            {
+              style: {
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '4px'
+              }
+            },
+            ...Array.from({ length: maxStars }, (_, index) => {
+              const isFilled = index < filledStars;
+              return React.createElement(
+                'span',
+                {
+                  key: index,
+                  style: {
+                    fontSize: '18px',
+                    color: isFilled ? '#ffc107' : '#e0e0e0'
+                  }
+                },
+                '★'
+              );
+            })
+          );
+        };
+        return React.createElement(Rating, { value: params.value })
+        }")
+    )
+  )
+)
+```
+
+Once again, just ask an LLM to create a React function according to your needs.

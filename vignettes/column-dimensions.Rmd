@@ -1,0 +1,210 @@
+---
+title: "Column Dimensions"
+format:
+  html:
+    minimal: true
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Column Dimensions}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(muiDataGrid)
+library(dplyr)
+```
+
+Column dimensions control how columns are sized within the data grid. The grid provides flexible options for both fixed and dynamic column widths.
+
+## Width
+
+### Fixed Width
+
+The simplest way to control column width is to set a fixed pixel value:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  columns = list(
+    list(field = "name", width = 250),
+    list(field = "height", width = 100),
+    list(field = "mass", width = 100)
+  )
+)
+```
+
+### Default Width
+
+If no width is specified, columns default to 100 pixels wide.
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head()
+  # All columns will be 100px wide
+)
+```
+
+## Fluid Width
+
+Use the `flex` property to make columns grow proportionally to fill available space. The `flex` value determines the proportion of available space each column takes.
+
+### Basic Flex
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  columns = list(
+    list(field = "name", flex = 1),
+    list(field = "height", flex = 1),
+    list(field = "mass", flex = 1)
+  )
+)
+```
+
+All columns share the available space equally.
+
+### Proportional Flex
+
+Columns with higher flex values take proportionally more space:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass, hair_color) |> head(),
+  columns = list(
+    list(field = "name", flex = 3),        # Takes 3/5 of flexible space
+    list(field = "height", flex = 1),      # Takes 1/5 of flexible space
+    list(field = "mass", flex = 1),        # Takes 1/5 of flexible space
+    list(field = "hair_color", width = 150) # Fixed width, not flexible
+  )
+)
+```
+
+### Combining Fixed and Flex
+
+You can mix fixed width columns with flex columns:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass, hair_color) |> head(),
+  columns = list(
+    list(field = "name", flex = 2),
+    list(field = "height", width = 100),    # Fixed
+    list(field = "mass", width = 100),      # Fixed
+    list(field = "hair_color", flex = 1)
+  )
+)
+```
+
+The fixed columns maintain their width, while flex columns share the remaining space.
+
+## Minimum Width
+
+Set a minimum width constraint to prevent columns from becoming too narrow:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  columns = list(
+    list(field = "name", flex = 1, minWidth = 150),
+    list(field = "height", flex = 1, minWidth = 80),
+    list(field = "mass", flex = 1, minWidth = 80)
+  )
+)
+```
+
+When the grid is resized smaller, columns will not shrink below their `minWidth`.
+
+## Maximum Width
+
+Set a maximum width constraint to prevent columns from becoming too wide:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  columns = list(
+    list(field = "name", flex = 1, maxWidth = 200),
+    list(field = "height", flex = 1),
+    list(field = "mass", flex = 1)
+  )
+)
+```
+
+## Min and Max Width Together
+
+Combine minimum and maximum width for precise control:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  columns = list(
+    list(field = "name", flex = 1, minWidth = 120, maxWidth = 300),
+    list(field = "height", width = 100),
+    list(field = "mass", width = 100)
+  )
+)
+```
+
+This ensures columns stay within a reasonable range while still being flexible.
+
+## Column Resizing
+
+### Resizable Columns
+
+By default, users can manually resize columns by dragging the column header edges:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head()
+  # Column resizing enabled by default
+)
+```
+
+### Disable Resizing Per Column
+
+Control which columns can be resized:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  columns = list(
+    list(field = "name", resizable = TRUE),
+    list(field = "height", resizable = FALSE), # Cannot resize
+    list(field = "mass", resizable = FALSE)    # Cannot resize
+  )
+)
+```
+
+### Disable Resizing Globally
+
+Disable column resizing for the entire grid:
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(),
+  disableColumnResize = TRUE
+)
+```
+
+## Autosizing Columns
+
+You can programmatically auto-size columns to fit their content. This is typically done through the grid's API, but you can set initial widths based on content length:
+
+```{r}
+# Estimate widths based on content
+DataGrid(
+  rows = starwars |> select(name, height, mass, hair_color) |> head(),
+  columns = list(
+    list(field = "name", width = 180),        # Longer names
+    list(field = "height", width = 90),       # Short numbers
+    list(field = "hair_color", width = 120)   # Medium text
+  )
+)
+```
