@@ -1,5 +1,6 @@
 # Workflow derived from https://github.com/r-lib/actions/tree/v2/examples
 # Need help debugging build failures? Start at https://github.com/r-lib/actions#where-to-find-help
+
 on:
   push:
     branches: [main, master]
@@ -8,22 +9,29 @@ on:
     types: [published]
   workflow_dispatch:
 
-name: pkgdown.yaml
+name: pkgdown
 
-permissions: read-all
+permissions:
+  contents: write
 
 jobs:
   pkgdown:
     runs-on: ubuntu-latest
-    # Only restrict concurrency for non-PR jobs
+
+    # Prevent concurrent deployments
     concurrency:
-      group: pkgdown-${{ github.event_name != 'pull_request' || github.run_id }}
+      group: pkgdown-${{ github.ref }}
+      cancel-in-progress: true
+
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-    permissions:
-      contents: write
+
     steps:
+      # Clean checkout (fixes worktree error)
       - uses: actions/checkout@v6
+        with:
+          clean: true
+          fetch-depth: 0
 
       - uses: r-lib/actions/setup-pandoc@v2
 
@@ -35,9 +43,14 @@ jobs:
         with:
           extra-packages: any::pkgdown, local::.
           needs: website
+          cache: true   # <--- caching enabled
 
       - name: Build site
-        run: pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE, dest_dir = "muiDataGrid")
+        run: pkgdown::build_site_github_pages(
+               new_process = FALSE,
+               install = FALSE,
+               dest_dir = "muiDataGrid"
+             )
         shell: Rscript {0}
 
       - name: Deploy to GitHub pages 🚀
