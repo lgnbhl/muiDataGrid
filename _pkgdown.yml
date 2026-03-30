@@ -28,8 +28,6 @@ navbar:
       href: articles/column-dimensions.html
     - text: Row Definition
       href: articles/row-definition.html
-    - text: Row Updates
-      href: articles/row-updates.html
     - text: Row Height
       href: articles/row-height.html
     - text: Row Spanning
@@ -38,6 +36,8 @@ navbar:
       href: articles/styling-basics.html
     - text: Custom with React JS
       href: articles/custom-react-js.html
+    - text: Server-Side Data
+      href: articles/server-side-data.html
   - text: News
     href: news/index.html
 
