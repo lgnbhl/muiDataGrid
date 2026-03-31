@@ -14,3 +14,4 @@
 ^reinstall.sh$
 ^cran-comments\.md$
 ^CRAN-SUBMISSION$
+^inst/examples$
