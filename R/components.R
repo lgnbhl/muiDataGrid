@@ -49,16 +49,25 @@ DataGrid <- function(rows = NULL, columns = NULL, ...) {
 #'   \code{rowCount} (integer, total matching rows).
 #'
 #' @examples
-#' \dontrun{
-#' output$grid <- renderReact({
-#'   result <- processGridParams(my_data, input$grid_params)
-#'   DataGridServer("grid_params", rows = result$rows, rowCount = result$rowCount)
-#' })
-#' }
+#' df <- data.frame(name = paste("Row", 1:50), value = 1:50)
+#'
+#' # Initial render (no params yet)
+#' processGridParams(df, params = NULL, pageSize = 10)
+#'
+#' # Page 2, sorted descending, filtered
+#' params <- list(
+#'   pagination_model = list(page = 1, pageSize = 10),
+#'   sort_model = list(list(field = "value", sort = "desc")),
+#'   filter_model = list(items = list(
+#'     list(field = "value", operator = ">", value = "10")
+#'   ))
+#' )
+#' processGridParams(df, params)
 #'
 #' @rdname processGridParams
 #' @export
 processGridParams <- function(data, params, pageSize = 100L) {
+  stopifnot(is.data.frame(data))
   # MUI field names from input$<inputId>: page, pageSize, field, sort,
   # operator, value, items. Update here if MUI renames them between versions.
   page         <- if (!is.null(params)) params$pagination_model$page    else 0L
@@ -72,11 +81,16 @@ processGridParams <- function(data, params, pageSize = 100L) {
     order_cols <- lapply(valid_sort, function(s)
       if (identical(s$sort, "desc")) -xtfrm(data[[s$field]]) else data[[s$field]]
     )
+    order_cols$na.last <- TRUE
     data <- data[do.call(order, order_cols), ]
   }
 
   # Filtering
   no_value_ops <- c("isEmpty", "isNotEmpty")
+  logic_op <- if (!is.null(params)) params$filter_model$logicOperator else "and"
+  if (is.null(logic_op)) logic_op <- "and"
+
+  keep_vectors <- list()
   for (f in filter_items) {
     if (is.null(f$field) || !f$field %in% names(data)) next
     if (is.null(f$value) && !f$operator %in% no_value_ops) next
@@ -84,30 +98,43 @@ processGridParams <- function(data, params, pageSize = 100L) {
     keep <- switch(
       f$operator,
       "contains"   = grepl(tolower(f$value), tolower(as.character(col)), fixed = TRUE),
-      "equals"     = ,
-      "is"         = tolower(as.character(col)) == tolower(f$value),
+      "equals"     = tolower(as.character(col)) == tolower(f$value),
+      "is"         = as.character(col) == f$value,
       "startsWith" = startsWith(tolower(as.character(col)), tolower(f$value)),
       "endsWith"   = endsWith(tolower(as.character(col)), tolower(f$value)),
       "not"        = ,
       "!="         = tolower(as.character(col)) != tolower(f$value),
-      ">"          = col > as.numeric(f$value),
-      ">="         = col >= as.numeric(f$value),
-      "<"          = col < as.numeric(f$value),
-      "<="         = col <= as.numeric(f$value),
+      "="          = col == suppressWarnings(as.numeric(f$value)),
+      ">"          = col > suppressWarnings(as.numeric(f$value)),
+      ">="         = col >= suppressWarnings(as.numeric(f$value)),
+      "<"          = col < suppressWarnings(as.numeric(f$value)),
+      "<="         = col <= suppressWarnings(as.numeric(f$value)),
       "isEmpty"    = is.na(col) | as.character(col) == "",
       "isNotEmpty" = !is.na(col) & as.character(col) != "",
       rep(TRUE, nrow(data))
     )
-    data <- data[keep, ]
+    keep[is.na(keep)] <- FALSE
+    keep_vectors[[length(keep_vectors) + 1L]] <- keep
   }
+
+  if (length(keep_vectors) > 0) {
+    combined <- if (identical(logic_op, "or")) {
+      Reduce(`|`, keep_vectors)
+    } else {
+      Reduce(`&`, keep_vectors)
+    }
+    data <- data[combined, ]
+  }
+
+  # Inject stable IDs before slicing so they are consistent across pages
+  data <- .inject_id(data)
 
   total_rows <- nrow(data)
   start      <- page * page_size + 1
   end        <- min(start + page_size - 1, total_rows)
-  list(
-    rows     = if (start <= total_rows) data[start:end, ] else data[0, ],
-    rowCount = total_rows
-  )
+  page_data  <- if (start <= total_rows) data[start:end, ] else data[0, ]
+  rownames(page_data) <- NULL
+  list(rows = page_data, rowCount = total_rows)
 }
 
 #' Server-Side DataGrid
@@ -141,6 +168,19 @@ processGridParams <- function(data, params, pageSize = 100L) {
 #'
 #' @return A shiny.react element.
 #'
+#' @examples
+#' \dontrun{
+#' output$grid <- renderReact({
+#'   result <- processGridParams(my_data, input$grid_params)
+#'   DataGridServer("grid_params",
+#'     rows = result$rows,
+#'     rowCount = result$rowCount,
+#'     initialPageSize = 25L,
+#'     pageSizeOptions = c(10L, 25L, 50L)
+#'   )
+#' })
+#' }
+#'
 #' @rdname DataGridServer
 #' @export
 DataGridServer <- function(
@@ -155,7 +195,7 @@ DataGridServer <- function(
   ...
 ) {
   if (is.null(columns) && !is.null(rows)) {
-    columns <- data.frame(field = names(rows))
+    columns <- data.frame(field = setdiff(names(rows), "id"))
   }
   rows <- .inject_id(rows)
   if (!is.null(initialPageSize) && !is.null(pageSizeOptions) &&
@@ -163,27 +203,35 @@ DataGridServer <- function(
     warning("initialPageSize (", initialPageSize, ") is not in pageSizeOptions (",
             paste(pageSizeOptions, collapse = ", "), "). MUI requires the initial page size to be included.")
   }
+  dots <- list(...)
+  protected <- c("paginationMode", "sortingMode", "filterMode", "pagination")
+  overridden <- intersect(names(dots), protected)
+  if (length(overridden) > 0) {
+    warning("Ignoring protected props set automatically by DataGridServer(): ",
+            paste(overridden, collapse = ", "))
+    dots[overridden] <- NULL
+  }
   initial_state <- if (!is.null(initialPageSize)) {
     list(pagination = list(paginationModel = list(page = 0L, pageSize = as.integer(initialPageSize))))
   }
+  props <- c(list(
+    inputId = inputId,
+    rows = rows,
+    columns = columns,
+    rowCount = if (!is.null(rowCount)) as.integer(rowCount),
+    loading = loading,
+    initialState = initial_state,
+    pageSizeOptions = if (!is.null(pageSizeOptions)) as.list(as.integer(pageSizeOptions)),
+    filterDebounce = filterDebounce,
+    paginationMode = "server",
+    sortingMode = "server",
+    filterMode = "server",
+    pagination = TRUE
+  ), dots)
   tag <- shiny.react::reactElement(
     module = "@muiDataGrid/custom",
     name = "ServerSideDataGrid",
-    props = shiny.react::asProps(
-      inputId = inputId,
-      rows = rows,
-      columns = columns,
-      rowCount = if (!is.null(rowCount)) as.numeric(rowCount),
-      loading = loading,
-      initialState = initial_state,
-      pageSizeOptions = if (!is.null(pageSizeOptions)) as.list(as.integer(pageSizeOptions)),
-      filterDebounce = filterDebounce,
-      paginationMode = "server",
-      sortingMode = "server",
-      filterMode = "server",
-      pagination = TRUE,
-      ...
-    ),
+    props = do.call(shiny.react::asProps, props),
     deps = muiDataGridDependency()
   )
   class(tag) <- c("muiDataGrid", class(tag))

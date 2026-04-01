@@ -9,12 +9,17 @@ function ServerSideDataGrid({ inputId, initialState, filterDebounce, ...otherPro
   });
 
   const debounceTimer = useRef(null);
+  const isFirstRender = useRef(true);
 
   // Cancel any pending debounce on unmount
   useEffect(() => () => clearTimeout(debounceTimer.current), []);
 
-  // Send state to R whenever pagination, sort, or filter changes
+  // Send state to R whenever pagination, sort, or filter changes (skip initial mount)
   useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
     if (window.Shiny?.setInputValue) {
       window.Shiny.setInputValue(inputId, {
         pagination_model: gridState.paginationModel,

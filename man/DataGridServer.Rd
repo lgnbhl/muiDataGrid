@@ -56,3 +56,17 @@ A shiny.react element.
 A DataGrid component with server-side pagination, sorting, and filtering.
 The component sends pagination, sort, and filter state to R via a Shiny input.
 }
+\examples{
+\dontrun{
+output$grid <- renderReact({
+  result <- processGridParams(my_data, input$grid_params)
+  DataGridServer("grid_params",
+    rows = result$rows,
+    rowCount = result$rowCount,
+    initialPageSize = 25L,
+    pageSizeOptions = c(10L, 25L, 50L)
+  )
+})
+}
+
+}

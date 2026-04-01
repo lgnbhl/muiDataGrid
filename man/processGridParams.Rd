@@ -27,11 +27,19 @@ parameters to a data.frame. Use inside \code{renderReact()} with
 \code{input$<inputId>} to get the current page of data.
 }
 \examples{
-\dontrun{
-output$grid <- renderReact({
-  result <- processGridParams(my_data, input$grid_params)
-  DataGridServer("grid_params", rows = result$rows, rowCount = result$rowCount)
-})
-}
+df <- data.frame(name = paste("Row", 1:50), value = 1:50)
+
+# Initial render (no params yet)
+processGridParams(df, params = NULL, pageSize = 10)
+
+# Page 2, sorted descending, filtered
+params <- list(
+  pagination_model = list(page = 1, pageSize = 10),
+  sort_model = list(list(field = "value", sort = "desc")),
+  filter_model = list(items = list(
+    list(field = "value", operator = ">", value = "10")
+  ))
+)
+processGridParams(df, params)
 
 }

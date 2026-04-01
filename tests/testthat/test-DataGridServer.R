@@ -80,7 +80,7 @@ test_that("DataGridServer converts rowCount to integer", {
     rows = df,
     rowCount = 100.5
   ))
-  expect_type(props$rowCount, "double")
+  expect_type(props$rowCount, "integer")
 })
 
 test_that("DataGridServer converts pageSizeOptions to list of integers", {
@@ -93,4 +93,31 @@ test_that("DataGridServer converts pageSizeOptions to list of integers", {
   ))
   expect_type(props$pageSizeOptions, "list")
   expect_equal(props$pageSizeOptions, list(5L, 10L, 25L))
+})
+
+test_that("DataGridServer warns and strips protected props from ...", {
+  df <- data.frame(id = 1, name = "Luke")
+  expect_warning(
+    result <- DataGridServer(
+      inputId = "grid",
+      rows = df,
+      rowCount = 1L,
+      paginationMode = "client"
+    ),
+    "paginationMode"
+  )
+  props <- get_props(result)
+  expect_equal(props$paginationMode, "server")
+})
+
+test_that("DataGridServer excludes id from auto-generated columns", {
+  df <- data.frame(id = 1:2, name = c("Luke", "Leia"), height = c(172, 150))
+  columns <- get_props(DataGridServer(
+    inputId = "grid",
+    rows = df,
+    rowCount = 2L
+  ))$columns
+  fields <- vapply(columns, function(c) c$field, character(1))
+  expect_false("id" %in% fields)
+  expect_equal(fields, c("name", "height"))
 })
