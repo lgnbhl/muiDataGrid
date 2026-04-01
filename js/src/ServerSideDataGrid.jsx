@@ -16,7 +16,7 @@ function ServerSideDataGrid({ inputId, initialState, filterDebounce, ...otherPro
   // Send state to R whenever pagination, sort, or filter changes
   useEffect(() => {
     if (window.Shiny?.setInputValue) {
-      Shiny.setInputValue(inputId, {
+      window.Shiny.setInputValue(inputId, {
         pagination_model: gridState.paginationModel,
         sort_model: gridState.sortModel,
         filter_model: gridState.filterModel,
