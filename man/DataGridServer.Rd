@@ -8,10 +8,11 @@ DataGridServer(
   inputId,
   rows = NULL,
   columns = NULL,
-  rowCount = 0L,
-  loading = FALSE,
-  initialPageSize = 25L,
-  pageSizeOptions = c(10L, 25L, 50L, 100L),
+  rowCount = NULL,
+  loading = NULL,
+  initialPageSize = NULL,
+  pageSizeOptions = NULL,
+  filterDebounce = NULL,
   ...
 )
 }
@@ -27,16 +28,26 @@ sort items), and \code{filter_model} (list with \code{items}).}
 \item{columns}{Column definitions (list of lists). If NULL, auto-generated
 from \code{names(rows)}.}
 
-\item{rowCount}{Integer. Total number of rows across all pages.}
+\item{rowCount}{Integer. Total number of rows across all pages. If
+\code{NULL}, the prop is not sent and MUI handles it as unknown.}
 
-\item{loading}{Logical. Whether to show the loading indicator.}
+\item{loading}{Logical. Whether to show the loading indicator. If
+\code{NULL}, MUI defaults to \code{FALSE}.}
 
-\item{initialPageSize}{Integer. Initial page size. Default 25.}
+\item{initialPageSize}{Integer. Convenience for setting the initial page
+size. Builds MUI's \code{initialState} prop. If \code{NULL}, MUI defaults
+to 100. Should match the \code{pageSize} argument of
+\code{processGridParams}.}
 
-\item{pageSizeOptions}{Integer vector. Available page size options.
-Default \code{c(10, 25, 50, 100)}.}
+\item{pageSizeOptions}{Integer vector. Available page size options. If
+\code{NULL}, MUI defaults to \code{c(25, 50, 100)}.}
 
-\item{...}{Additional props passed to the MUI DataGrid.}
+\item{filterDebounce}{Integer. Milliseconds to debounce filter input before
+sending state to R. If \code{NULL}, defaults to 300 ms.}
+
+\item{...}{Additional props passed directly to the MUI DataGrid component.
+Note: \code{paginationMode}, \code{sortingMode}, \code{filterMode}, and
+\code{pagination} are set automatically and should not be overridden.}
 }
 \value{
 A shiny.react element.

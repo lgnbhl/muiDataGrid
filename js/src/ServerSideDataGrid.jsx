@@ -1,79 +1,63 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { DataGrid } from '@mui/x-data-grid';
 
-function ServerSideDataGrid({
-  inputId,
-  rows,
-  columns,
-  rowCount,
-  loading,
-  initialPageSize,
-  pageSizeOptions,
-  ...otherProps
-}) {
-  const [paginationModel, setPaginationModel] = useState({
-    page: 0,
-    pageSize: initialPageSize || 25,
+function ServerSideDataGrid({ inputId, initialState, filterDebounce, ...otherProps }) {
+  const [gridState, setGridState] = useState({
+    paginationModel: initialState?.pagination?.paginationModel ?? { page: 0, pageSize: 100 },
+    sortModel: initialState?.sorting?.sortModel ?? [],
+    filterModel: initialState?.filter?.filterModel ?? { items: [] },
   });
-  const [sortModel, setSortModel] = useState([]);
-  const [filterModel, setFilterModel] = useState({ items: [] });
 
-  // Track whether this is the initial mount to avoid sending params before Shiny is ready
-  const isInitialMount = useRef(true);
+  const debounceTimer = useRef(null);
+
+  // Cancel any pending debounce on unmount
+  useEffect(() => () => clearTimeout(debounceTimer.current), []);
 
   // Send state to R whenever pagination, sort, or filter changes
   useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      // Send initial params so R can render the first page
-      if (window.Shiny && window.Shiny.setInputValue) {
-        Shiny.setInputValue(inputId, {
-          pagination_model: paginationModel,
-          sort_model: sortModel,
-          filter_model: filterModel,
-        }, { priority: 'event' });
-      }
-      return;
-    }
-
-    if (window.Shiny && window.Shiny.setInputValue) {
+    if (window.Shiny?.setInputValue) {
       Shiny.setInputValue(inputId, {
-        pagination_model: paginationModel,
-        sort_model: sortModel,
-        filter_model: filterModel,
+        pagination_model: gridState.paginationModel,
+        sort_model: gridState.sortModel,
+        filter_model: gridState.filterModel,
       }, { priority: 'event' });
     }
-  }, [paginationModel, sortModel, filterModel, inputId]);
+  }, [gridState, inputId]);
 
-  // Reset to page 0 when sort or filter changes
-  const handleSortModelChange = (newSortModel) => {
-    setSortModel(newSortModel);
-    setPaginationModel((prev) => ({ ...prev, page: 0 }));
+  const handlePaginationModelChange = (newPaginationModel) => {
+    setGridState((prev) => ({ ...prev, paginationModel: newPaginationModel }));
   };
 
+  // Reset to page 0 when sort changes
+  const handleSortModelChange = (newSortModel) => {
+    setGridState((prev) => ({
+      ...prev,
+      sortModel: newSortModel,
+      paginationModel: { ...prev.paginationModel, page: 0 },
+    }));
+  };
+
+  // Debounce filter changes to avoid excessive R round-trips per keystroke
   const handleFilterModelChange = (newFilterModel) => {
-    setFilterModel(newFilterModel);
-    setPaginationModel((prev) => ({ ...prev, page: 0 }));
+    clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => {
+      setGridState((prev) => ({
+        ...prev,
+        filterModel: newFilterModel,
+        paginationModel: { ...prev.paginationModel, page: 0 },
+      }));
+    }, filterDebounce ?? 300);
   };
 
   return (
     <DataGrid
-      rows={rows || []}
-      columns={columns || []}
-      rowCount={rowCount || 0}
-      loading={loading || false}
-      paginationMode="server"
-      sortingMode="server"
-      filterMode="server"
-      pagination
-      paginationModel={paginationModel}
-      onPaginationModelChange={setPaginationModel}
-      sortModel={sortModel}
-      onSortModelChange={handleSortModelChange}
-      filterModel={filterModel}
-      onFilterModelChange={handleFilterModelChange}
-      pageSizeOptions={pageSizeOptions || [10, 25, 50, 100]}
       {...otherProps}
+      paginationModel={gridState.paginationModel}
+      onPaginationModelChange={handlePaginationModelChange}
+      sortModel={gridState.sortModel}
+      onSortModelChange={handleSortModelChange}
+      filterModel={gridState.filterModel}
+      onFilterModelChange={handleFilterModelChange}
     />
   );
 }

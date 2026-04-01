@@ -56,35 +56,47 @@ A minimal server-side DataGrid app requires three things:
 3. `DataGridServer()` to render the grid with the current page of data
 
 ```r
-library(shiny)
-library(muiDataGrid)
-library(muiMaterial)
-library(dplyr)
+# 100'000 rows
+all_data <- data.frame(
+  id = 1:100000,
+  label = paste("Row", 1:100000),
+  value = 1:100000,
+  group = rep(c("A", "B", "C", "D"), each = 25000)
+)
 
-all_data <- dplyr::starwars |>
-  select(name, height, mass, birth_year, gender, homeworld)
+# Very slow with big data
+# DataGrid(
+#   rows = all_data,
+#   initialState = list(
+#     pagination = list(
+#       paginationModel = list(pageSize = 5)
+#     )
+#   )
+# )
 
 ui <- muiMaterialPage(
+  Typography("Server-Side DataGrid Example", variant = "h5"),
   reactOutput("grid")
 )
 
 server <- function(input, output, session) {
   output$grid <- renderReact({
-    result <- processGridParams(all_data, input$grid_params)
+    result <- processGridParams(all_data, input$grid_params, pageSize = 10L)
 
     DataGridServer(
       inputId = "grid_params",
       rows = result$rows,
       rowCount = result$rowCount,
       initialPageSize = 10L,
-      pageSizeOptions = c(5L, 10L, 25L),
-      sx = list(height = 500)
+      pageSizeOptions = c(5L, 10L, 25L)
     )
   })
 }
 
 shinyApp(ui, server)
 ```
+
+> **Note:** `pageSize` in `processGridParams()` and `initialPageSize` in `DataGridServer()` should match. This ensures the first render (before the grid sends any state) returns the same number of rows as the grid will display. `initialPageSize` must also be included in `pageSizeOptions` — a warning is raised if not.
 
 ## Key functions
 
@@ -98,8 +110,9 @@ Renders a DataGrid with server-side pagination, sorting, and filtering.
 | `rows` | Data frame with the rows for the **current page only**. |
 | `columns` | Column definitions (auto-generated from `rows` if NULL). |
 | `rowCount` | Total number of matching rows across all pages. |
-| `initialPageSize` | Initial number of rows per page (default 25). |
-| `pageSizeOptions` | Available page size choices (default `c(10, 25, 50, 100)`). |
+| `initialPageSize` | Initial rows per page. Must be included in `pageSizeOptions`. Defaults to MUI's default (100) if NULL. |
+| `pageSizeOptions` | Available page size choices. Defaults to MUI's default `c(25, 50, 100)` if NULL. |
+| `filterDebounce` | Milliseconds to wait after typing before sending filter state to R. Defaults to 300 ms if NULL. |
 | `loading` | Show a loading indicator (default FALSE). |
 | `...` | Additional props passed to the MUI DataGrid. |
 
@@ -111,7 +124,7 @@ Applies pagination, sorting, and filtering to a data frame based on `input$<inpu
 |---|---|
 | `data` | The full data frame. |
 | `params` | `input$<inputId>` from `DataGridServer` (NULL on first render). |
-| `pageSize` | Default page size before first interaction (default 10). |
+| `pageSize` | Page size used on first render before the grid sends state. Should match `initialPageSize`. Defaults to 100. |
 
 Returns a list with:
 
@@ -136,8 +149,7 @@ server <- function(input, output, session) {
         list(field = "height", headerName = "Height (cm)", type = "number", width = 120),
         list(field = "mass", headerName = "Mass (kg)", type = "number", width = 120),
         list(field = "gender", headerName = "Gender", width = 120)
-      ),
-      initialPageSize = 10L
+      )
     )
   })
 }
@@ -179,8 +191,8 @@ server <- function(input, output, session) {
   output$grid <- renderReact({
     params <- input$grid_params
 
-    page <- if (!is.null(params)) params$pagination_model$page else 0
-    page_size <- if (!is.null(params)) params$pagination_model$pageSize else 10
+    page      <- if (!is.null(params)) params$pagination_model$page     else 0
+    page_size <- if (!is.null(params)) params$pagination_model$pageSize  else 25
 
     # Custom database query
     result <- DBI::dbGetQuery(con, sprintf(
@@ -193,7 +205,8 @@ server <- function(input, output, session) {
       inputId = "grid_params",
       rows = result,
       rowCount = total,
-      initialPageSize = 10L
+      initialPageSize = 25L,
+      pageSizeOptions = c(25L, 50L, 100L)
     )
   })
 }

@@ -7,11 +7,13 @@
 DataGrid(rows = NULL, columns = NULL, ...)
 }
 \arguments{
-\item{rows}{rows}
+\item{rows}{A data.frame of rows. An \code{id} column is added automatically
+from row names if not already present.}
 
-\item{columns}{columns}
+\item{columns}{Column definitions (list of lists). If \code{NULL},
+auto-generated from \code{names(rows)}.}
 
-\item{...}{Other props}
+\item{...}{Additional props passed directly to the MUI DataGrid component.}
 }
 \description{
 DataGrid

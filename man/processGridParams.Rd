@@ -4,7 +4,7 @@
 \alias{processGridParams}
 \title{Process server-side grid parameters}
 \usage{
-processGridParams(data, params, pageSize = 10L)
+processGridParams(data, params, pageSize = 100L)
 }
 \arguments{
 \item{data}{A data.frame with all rows.}
@@ -12,7 +12,10 @@ processGridParams(data, params, pageSize = 10L)
 \item{params}{The grid params list from \code{input$<inputId>}, or NULL
 on initial render.}
 
-\item{pageSize}{Default page size when params is NULL. Default 10.}
+\item{pageSize}{Page size to use when \code{params} is \code{NULL} (i.e.
+the first render before the grid has sent state). Should match the
+\code{initialPageSize} passed to \code{DataGridServer}, or MUI's default
+of 100 if none was specified.}
 }
 \value{
 A list with \code{rows} (data.frame for the current page) and
