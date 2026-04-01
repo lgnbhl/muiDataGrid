@@ -59,11 +59,11 @@ The component sends pagination, sort, and filter state to R via a Shiny input.
 \examples{
 \dontrun{
 output$grid <- renderReact({
-  result <- processGridParams(my_data, input$grid_params)
+  result <- processGridParams(my_data, input$grid_params, pageSize = 10L)
   DataGridServer("grid_params",
     rows = result$rows,
     rowCount = result$rowCount,
-    initialPageSize = 25L,
+    initialPageSize = 10L,
     pageSizeOptions = c(10L, 25L, 50L)
   )
 })

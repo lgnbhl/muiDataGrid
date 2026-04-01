@@ -70,17 +70,28 @@ processGridParams <- function(data, params, pageSize = 100L) {
   stopifnot(is.data.frame(data))
   # MUI field names from input$<inputId>: page, pageSize, field, sort,
   # operator, value, items. Update here if MUI renames them between versions.
-  page         <- if (!is.null(params)) params$pagination_model$page    else 0L
-  page_size    <- if (!is.null(params)) params$pagination_model$pageSize else pageSize
-  sort_items   <- if (!is.null(params)) params$sort_model                else list()
-  filter_items <- if (!is.null(params)) params$filter_model$items        else list()
+  page <- if (!is.null(params)) params$pagination_model$page else 0L
+  page_size <- if (!is.null(params)) {
+    params$pagination_model$pageSize
+  } else {
+    pageSize
+  }
+  sort_items <- if (!is.null(params)) params$sort_model else list()
+  filter_items <- if (!is.null(params)) params$filter_model$items else list()
 
   # Sorting — all items applied together to support multi-column sort
-  valid_sort <- Filter(function(s) !is.null(s$field) && s$field %in% names(data), sort_items)
+  valid_sort <- Filter(
+    function(s) !is.null(s$field) && s$field %in% names(data),
+    sort_items
+  )
   if (length(valid_sort) > 0) {
-    order_cols <- lapply(valid_sort, function(s)
-      if (identical(s$sort, "desc")) -xtfrm(data[[s$field]]) else data[[s$field]]
-    )
+    order_cols <- lapply(valid_sort, function(s) {
+      if (identical(s$sort, "desc")) {
+        -xtfrm(data[[s$field]])
+      } else {
+        data[[s$field]]
+      }
+    })
     order_cols$na.last <- TRUE
     data <- data[do.call(order, order_cols), ]
   }
@@ -88,28 +99,38 @@ processGridParams <- function(data, params, pageSize = 100L) {
   # Filtering
   no_value_ops <- c("isEmpty", "isNotEmpty")
   logic_op <- if (!is.null(params)) params$filter_model$logicOperator else "and"
-  if (is.null(logic_op)) logic_op <- "and"
+  if (is.null(logic_op)) {
+    logic_op <- "and"
+  }
 
   keep_vectors <- list()
   for (f in filter_items) {
-    if (is.null(f$field) || !f$field %in% names(data)) next
-    if (is.null(f$value) && !f$operator %in% no_value_ops) next
+    if (is.null(f$field) || !f$field %in% names(data)) {
+      next
+    }
+    if (is.null(f$value) && !f$operator %in% no_value_ops) {
+      next
+    }
     col <- data[[f$field]]
     keep <- switch(
       f$operator,
-      "contains"   = grepl(tolower(f$value), tolower(as.character(col)), fixed = TRUE),
-      "equals"     = tolower(as.character(col)) == tolower(f$value),
-      "is"         = as.character(col) == f$value,
+      "contains" = grepl(
+        tolower(f$value),
+        tolower(as.character(col)),
+        fixed = TRUE
+      ),
+      "equals" = tolower(as.character(col)) == tolower(f$value),
+      "is" = as.character(col) == f$value,
       "startsWith" = startsWith(tolower(as.character(col)), tolower(f$value)),
-      "endsWith"   = endsWith(tolower(as.character(col)), tolower(f$value)),
-      "not"        = ,
-      "!="         = tolower(as.character(col)) != tolower(f$value),
-      "="          = col == suppressWarnings(as.numeric(f$value)),
-      ">"          = col > suppressWarnings(as.numeric(f$value)),
-      ">="         = col >= suppressWarnings(as.numeric(f$value)),
-      "<"          = col < suppressWarnings(as.numeric(f$value)),
-      "<="         = col <= suppressWarnings(as.numeric(f$value)),
-      "isEmpty"    = is.na(col) | as.character(col) == "",
+      "endsWith" = endsWith(tolower(as.character(col)), tolower(f$value)),
+      "not" = ,
+      "!=" = tolower(as.character(col)) != tolower(f$value),
+      "=" = col == suppressWarnings(as.numeric(f$value)),
+      ">" = col > suppressWarnings(as.numeric(f$value)),
+      ">=" = col >= suppressWarnings(as.numeric(f$value)),
+      "<" = col < suppressWarnings(as.numeric(f$value)),
+      "<=" = col <= suppressWarnings(as.numeric(f$value)),
+      "isEmpty" = is.na(col) | as.character(col) == "",
       "isNotEmpty" = !is.na(col) & as.character(col) != "",
       rep(TRUE, nrow(data))
     )
@@ -130,9 +151,9 @@ processGridParams <- function(data, params, pageSize = 100L) {
   data <- .inject_id(data)
 
   total_rows <- nrow(data)
-  start      <- page * page_size + 1
-  end        <- min(start + page_size - 1, total_rows)
-  page_data  <- if (start <= total_rows) data[start:end, ] else data[0, ]
+  start <- page * page_size + 1
+  end <- min(start + page_size - 1, total_rows)
+  page_data <- if (start <= total_rows) data[start:end, ] else data[0, ]
   rownames(page_data) <- NULL
   list(rows = page_data, rowCount = total_rows)
 }
@@ -171,11 +192,11 @@ processGridParams <- function(data, params, pageSize = 100L) {
 #' @examples
 #' \dontrun{
 #' output$grid <- renderReact({
-#'   result <- processGridParams(my_data, input$grid_params)
+#'   result <- processGridParams(my_data, input$grid_params, pageSize = 10L)
 #'   DataGridServer("grid_params",
 #'     rows = result$rows,
 #'     rowCount = result$rowCount,
-#'     initialPageSize = 25L,
+#'     initialPageSize = 10L,
 #'     pageSizeOptions = c(10L, 25L, 50L)
 #'   )
 #' })
@@ -198,36 +219,58 @@ DataGridServer <- function(
     columns <- data.frame(field = setdiff(names(rows), "id"))
   }
   rows <- .inject_id(rows)
-  if (!is.null(initialPageSize) && !is.null(pageSizeOptions) &&
-      !initialPageSize %in% pageSizeOptions) {
-    warning("initialPageSize (", initialPageSize, ") is not in pageSizeOptions (",
-            paste(pageSizeOptions, collapse = ", "), "). MUI requires the initial page size to be included.")
+  if (
+    !is.null(initialPageSize) &&
+      !is.null(pageSizeOptions) &&
+      !initialPageSize %in% pageSizeOptions
+  ) {
+    warning(
+      "initialPageSize (",
+      initialPageSize,
+      ") is not in pageSizeOptions (",
+      paste(pageSizeOptions, collapse = ", "),
+      "). MUI requires the initial page size to be included."
+    )
   }
   dots <- list(...)
   protected <- c("paginationMode", "sortingMode", "filterMode", "pagination")
   overridden <- intersect(names(dots), protected)
   if (length(overridden) > 0) {
-    warning("Ignoring protected props set automatically by DataGridServer(): ",
-            paste(overridden, collapse = ", "))
+    warning(
+      "Ignoring protected props set automatically by DataGridServer(): ",
+      paste(overridden, collapse = ", ")
+    )
     dots[overridden] <- NULL
   }
   initial_state <- if (!is.null(initialPageSize)) {
-    list(pagination = list(paginationModel = list(page = 0L, pageSize = as.integer(initialPageSize))))
+    list(
+      pagination = list(
+        paginationModel = list(
+          page = 0L,
+          pageSize = as.integer(initialPageSize)
+        )
+      )
+    )
   }
-  props <- c(list(
-    inputId = inputId,
-    rows = rows,
-    columns = columns,
-    rowCount = if (!is.null(rowCount)) as.integer(rowCount),
-    loading = loading,
-    initialState = initial_state,
-    pageSizeOptions = if (!is.null(pageSizeOptions)) as.list(as.integer(pageSizeOptions)),
-    filterDebounce = filterDebounce,
-    paginationMode = "server",
-    sortingMode = "server",
-    filterMode = "server",
-    pagination = TRUE
-  ), dots)
+  props <- c(
+    list(
+      inputId = inputId,
+      rows = rows,
+      columns = columns,
+      rowCount = if (!is.null(rowCount)) as.integer(rowCount),
+      loading = loading,
+      initialState = initial_state,
+      pageSizeOptions = if (!is.null(pageSizeOptions)) {
+        as.list(as.integer(pageSizeOptions))
+      },
+      filterDebounce = filterDebounce,
+      paginationMode = "server",
+      sortingMode = "server",
+      filterMode = "server",
+      pagination = TRUE
+    ),
+    dots
+  )
   tag <- shiny.react::reactElement(
     module = "@muiDataGrid/custom",
     name = "ServerSideDataGrid",
