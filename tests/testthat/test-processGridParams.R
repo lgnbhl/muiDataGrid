@@ -9,9 +9,9 @@ df <- data.frame(
 
 test_that("returns first page with defaults when params is NULL", {
   result <- processGridParams(df, params = NULL)
-  expect_equal(nrow(result$rows), 10)
+  expect_equal(nrow(result$rows), 20)
   expect_equal(result$rowCount, 20)
-  expect_equal(result$rows$id, 1:10)
+  expect_equal(result$rows$id, 1:20)
 })
 
 test_that("respects custom pageSize when params is NULL", {
@@ -95,9 +95,11 @@ test_that("filters with contains operator", {
   params <- list(
     pagination_model = list(page = 0, pageSize = 100),
     sort_model = list(),
-    filter_model = list(items = list(
-      list(field = "name", operator = "contains", value = "Row 1")
-    ))
+    filter_model = list(
+      items = list(
+        list(field = "name", operator = "contains", value = "Row 1")
+      )
+    )
   )
   result <- processGridParams(df, params)
   # Matches "Row 1", "Row 10", ..., "Row 19"
@@ -109,9 +111,11 @@ test_that("filters with equals operator", {
   params <- list(
     pagination_model = list(page = 0, pageSize = 100),
     sort_model = list(),
-    filter_model = list(items = list(
-      list(field = "group", operator = "equals", value = "A")
-    ))
+    filter_model = list(
+      items = list(
+        list(field = "group", operator = "equals", value = "A")
+      )
+    )
   )
   result <- processGridParams(df, params)
   expect_equal(result$rowCount, 10)
@@ -122,9 +126,11 @@ test_that("filters with > operator", {
   params <- list(
     pagination_model = list(page = 0, pageSize = 100),
     sort_model = list(),
-    filter_model = list(items = list(
-      list(field = "value", operator = ">", value = "15")
-    ))
+    filter_model = list(
+      items = list(
+        list(field = "value", operator = ">", value = "15")
+      )
+    )
   )
   result <- processGridParams(df, params)
   expect_equal(result$rowCount, 5)
@@ -135,9 +141,11 @@ test_that("filters with < operator", {
   params <- list(
     pagination_model = list(page = 0, pageSize = 100),
     sort_model = list(),
-    filter_model = list(items = list(
-      list(field = "value", operator = "<", value = "5")
-    ))
+    filter_model = list(
+      items = list(
+        list(field = "value", operator = "<", value = "5")
+      )
+    )
   )
   result <- processGridParams(df, params)
   expect_equal(result$rowCount, 4)
@@ -148,9 +156,11 @@ test_that("filters with startsWith operator", {
   params <- list(
     pagination_model = list(page = 0, pageSize = 100),
     sort_model = list(),
-    filter_model = list(items = list(
-      list(field = "name", operator = "startsWith", value = "Row 2")
-    ))
+    filter_model = list(
+      items = list(
+        list(field = "name", operator = "startsWith", value = "Row 2")
+      )
+    )
   )
   result <- processGridParams(df, params)
   expect_true(all(grepl("^Row 2", result$rows$name)))
@@ -161,9 +171,11 @@ test_that("filters with isEmpty operator", {
   params <- list(
     pagination_model = list(page = 0, pageSize = 100),
     sort_model = list(),
-    filter_model = list(items = list(
-      list(field = "val", operator = "isEmpty", value = "unused")
-    ))
+    filter_model = list(
+      items = list(
+        list(field = "val", operator = "isEmpty", value = "unused")
+      )
+    )
   )
   result <- processGridParams(df_na, params)
   expect_equal(result$rowCount, 2)
@@ -174,9 +186,11 @@ test_that("filters with isNotEmpty operator", {
   params <- list(
     pagination_model = list(page = 0, pageSize = 100),
     sort_model = list(),
-    filter_model = list(items = list(
-      list(field = "val", operator = "isNotEmpty", value = "unused")
-    ))
+    filter_model = list(
+      items = list(
+        list(field = "val", operator = "isNotEmpty", value = "unused")
+      )
+    )
   )
   result <- processGridParams(df_na, params)
   expect_equal(result$rowCount, 1)
@@ -187,9 +201,11 @@ test_that("ignores filter with NULL value", {
   params <- list(
     pagination_model = list(page = 0, pageSize = 100),
     sort_model = list(),
-    filter_model = list(items = list(
-      list(field = "group", operator = "equals", value = NULL)
-    ))
+    filter_model = list(
+      items = list(
+        list(field = "group", operator = "equals", value = NULL)
+      )
+    )
   )
   result <- processGridParams(df, params)
   expect_equal(result$rowCount, 20)
@@ -199,9 +215,11 @@ test_that("ignores filter on non-existent field", {
   params <- list(
     pagination_model = list(page = 0, pageSize = 100),
     sort_model = list(),
-    filter_model = list(items = list(
-      list(field = "nonexistent", operator = "equals", value = "A")
-    ))
+    filter_model = list(
+      items = list(
+        list(field = "nonexistent", operator = "equals", value = "A")
+      )
+    )
   )
   result <- processGridParams(df, params)
   expect_equal(result$rowCount, 20)
@@ -211,9 +229,11 @@ test_that("unknown operator keeps all rows", {
   params <- list(
     pagination_model = list(page = 0, pageSize = 100),
     sort_model = list(),
-    filter_model = list(items = list(
-      list(field = "group", operator = "unknownOp", value = "A")
-    ))
+    filter_model = list(
+      items = list(
+        list(field = "group", operator = "unknownOp", value = "A")
+      )
+    )
   )
   result <- processGridParams(df, params)
   expect_equal(result$rowCount, 20)
@@ -225,9 +245,11 @@ test_that("combines sort, filter, and pagination", {
   params <- list(
     pagination_model = list(page = 0, pageSize = 3),
     sort_model = list(list(field = "value", sort = "desc")),
-    filter_model = list(items = list(
-      list(field = "group", operator = "equals", value = "A")
-    ))
+    filter_model = list(
+      items = list(
+        list(field = "group", operator = "equals", value = "A")
+      )
+    )
   )
   result <- processGridParams(df, params)
   # Group A has ids 1-10, sorted desc by value -> 10,9,8,...
@@ -243,9 +265,11 @@ test_that("rowCount is total after filter, not page count", {
   params <- list(
     pagination_model = list(page = 0, pageSize = 3),
     sort_model = list(),
-    filter_model = list(items = list(
-      list(field = "group", operator = "equals", value = "B")
-    ))
+    filter_model = list(
+      items = list(
+        list(field = "group", operator = "equals", value = "B")
+      )
+    )
   )
   result <- processGridParams(df, params)
   expect_equal(result$rowCount, 10)
