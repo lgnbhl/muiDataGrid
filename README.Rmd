@@ -74,10 +74,10 @@ DataGrid(
 )
 ```
 
-**Read the full documentation with examples [here](https://lgnbhl.github.io/muiDataGrid/).**
+**Read the full documentation with examples [here](https://felixluginbuhl.com/muiDataGrid/).**
 
 ### Contribute
 
-If you have any issue, question or want to contribute with a pull request, don't hesitate to write me on https://github.com/lgnbhl/muiDataGrid
+If you have any issue, question or want to contribute with a pull request, don't hesitate to write me on https://felixluginbuhl.com/muiDataGrid/
 
 For updates follow [Felix Luginbuhl](https://linkedin.com/in/FelixLuginbuhl) on LinkedIn.
