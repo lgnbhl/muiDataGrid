@@ -8,7 +8,7 @@
 [![CRAN
 status](https://www.r-pkg.org/badges/version/muiDataGrid)](https://CRAN.R-project.org/package=muiDataGrid)
 [![R-CMD-check](https://github.com/lgnbhl/muiDataGrid/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/lgnbhl/muiDataGrid/actions/workflows/R-CMD-check.yaml)
-[![](https://img.shields.io/badge/@mui/x--data--grid-%5E8.23.0-blue.svg)](https://mui.com/x/react-data-grid/)
+[![](https://img.shields.io/badge/@mui/x--data--grid-%5E8.28.1-blue.svg)](https://mui.com/x/react-data-grid/)
 [![](https://img.shields.io/badge/react-18.3.1-blue.svg)](https://mui.com/x/react-data-grid/)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Follow-E4405F?style=social&logo=linkedin)](https://www.linkedin.com/in/FelixLuginbuhl)
 <!-- badges: end -->
@@ -20,7 +20,11 @@ and more.
 
 ## Install
 
-You can install the development version of muiTreeView like so:
+``` r
+install.packages("muiDataGrid")
+```
+
+You can install the development version of muiDataGrid like so:
 
 ``` r
 remotes::install_github("lgnbhl/muiDataGrid")
@@ -61,13 +65,13 @@ DataGrid(
 ```
 
 **Read the full documentation with examples
-[here](https://lgnbhl.github.io/muiDataGrid/).**
+[here](https://felixluginbuhl.com/muiDataGrid/).**
 
 ### Contribute
 
 If you have any issue, question or want to contribute with a pull
 request, don’t hesitate to write me on
-<https://github.com/lgnbhl/muiDataGrid>
+<https://felixluginbuhl.com/muiDataGrid/>
 
 For updates follow [Felix
 Luginbuhl](https://linkedin.com/in/FelixLuginbuhl) on LinkedIn.

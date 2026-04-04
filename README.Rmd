@@ -34,6 +34,10 @@ dependencies <- jsonlite::fromJSON("js/package.json")$dependencies
 
 ## Install
 
+``` r
+install.packages("muiDataGrid")
+```
+
 You can install the development version of muiDataGrid like so:
 
 ``` r
