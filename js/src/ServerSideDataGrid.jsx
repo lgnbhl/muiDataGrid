@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { DataGrid } from '@mui/x-data-grid';
 
 function ServerSideDataGrid({ inputId, initialState, filterDebounce, ...otherProps }) {
@@ -9,7 +9,11 @@ function ServerSideDataGrid({ inputId, initialState, filterDebounce, ...otherPro
   });
 
   const debounceTimer = useRef(null);
+  const filterDebounceRef = useRef(filterDebounce ?? 300);
   const isFirstRender = useRef(true);
+
+  // Keep debounce delay in sync if the prop ever changes
+  useEffect(() => { filterDebounceRef.current = filterDebounce ?? 300; }, [filterDebounce]);
 
   // Cancel any pending debounce on unmount
   useEffect(() => () => clearTimeout(debounceTimer.current), []);
@@ -29,21 +33,21 @@ function ServerSideDataGrid({ inputId, initialState, filterDebounce, ...otherPro
     }
   }, [gridState, inputId]);
 
-  const handlePaginationModelChange = (newPaginationModel) => {
+  const handlePaginationModelChange = useCallback((newPaginationModel) => {
     setGridState((prev) => ({ ...prev, paginationModel: newPaginationModel }));
-  };
+  }, []);
 
   // Reset to page 0 when sort changes
-  const handleSortModelChange = (newSortModel) => {
+  const handleSortModelChange = useCallback((newSortModel) => {
     setGridState((prev) => ({
       ...prev,
       sortModel: newSortModel,
       paginationModel: { ...prev.paginationModel, page: 0 },
     }));
-  };
+  }, []);
 
   // Debounce filter changes to avoid excessive R round-trips per keystroke
-  const handleFilterModelChange = (newFilterModel) => {
+  const handleFilterModelChange = useCallback((newFilterModel) => {
     clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => {
       setGridState((prev) => ({
@@ -51,8 +55,8 @@ function ServerSideDataGrid({ inputId, initialState, filterDebounce, ...otherPro
         filterModel: newFilterModel,
         paginationModel: { ...prev.paginationModel, page: 0 },
       }));
-    }, filterDebounce ?? 300);
-  };
+    }, filterDebounceRef.current);
+  }, []);
 
   return (
     <DataGrid
@@ -67,4 +71,5 @@ function ServerSideDataGrid({ inputId, initialState, filterDebounce, ...otherPro
   );
 }
 
-export { ServerSideDataGrid };
+const MemoizedServerSideDataGrid = memo(ServerSideDataGrid);
+export { MemoizedServerSideDataGrid as ServerSideDataGrid };

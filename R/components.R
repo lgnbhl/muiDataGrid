@@ -1,3 +1,5 @@
+`%||%` <- function(x, y) if (is.null(x)) y else x
+
 # Inject a stable integer id column if one is not already present.
 .inject_id <- function(rows) {
   if (!is.null(rows) && !"id" %in% names(rows)) {
@@ -70,14 +72,11 @@ processGridParams <- function(data, params, pageSize = 100L) {
   stopifnot(is.data.frame(data))
   # MUI field names from input$<inputId>: page, pageSize, field, sort,
   # operator, value, items. Update here if MUI renames them between versions.
-  page <- if (!is.null(params)) params$pagination_model$page else 0L
-  page_size <- if (!is.null(params)) {
-    params$pagination_model$pageSize
-  } else {
-    pageSize
-  }
-  sort_items <- if (!is.null(params)) params$sort_model else list()
-  filter_items <- if (!is.null(params)) params$filter_model$items else list()
+  # NULL$foo returns NULL in R, so these safely default when params is NULL.
+  page         <- params$pagination_model$page     %||% 0L
+  page_size    <- params$pagination_model$pageSize %||% pageSize
+  sort_items   <- params$sort_model                %||% list()
+  filter_items <- params$filter_model$items        %||% list()
 
   # Sorting — all items applied together to support multi-column sort
   valid_sort <- Filter(
@@ -98,10 +97,7 @@ processGridParams <- function(data, params, pageSize = 100L) {
 
   # Filtering
   no_value_ops <- c("isEmpty", "isNotEmpty")
-  logic_op <- if (!is.null(params)) params$filter_model$logicOperator else "and"
-  if (is.null(logic_op)) {
-    logic_op <- "and"
-  }
+  logic_op <- params$filter_model$logicOperator %||% "and"
 
   keep_vectors <- list()
   for (f in filter_items) {
@@ -130,6 +126,11 @@ processGridParams <- function(data, params, pageSize = 100L) {
       ">=" = col >= suppressWarnings(as.numeric(f$value)),
       "<" = col < suppressWarnings(as.numeric(f$value)),
       "<=" = col <= suppressWarnings(as.numeric(f$value)),
+      "isAnyOf" = tolower(as.character(col)) %in% tolower(as.character(f$value)),
+      "after" = col > as.Date(f$value),
+      "onOrAfter" = col >= as.Date(f$value),
+      "before" = col < as.Date(f$value),
+      "onOrBefore" = col <= as.Date(f$value),
       "isEmpty" = is.na(col) | as.character(col) == "",
       "isNotEmpty" = !is.na(col) & as.character(col) != "",
       rep(TRUE, nrow(data))
@@ -163,22 +164,32 @@ processGridParams <- function(data, params, pageSize = 100L) {
 #' A DataGrid component with server-side pagination, sorting, and filtering.
 #' The component sends pagination, sort, and filter state to R via a Shiny input.
 #'
+#' Pass the full dataset via \code{rows} — just like \code{DataGrid()} —
+#' and \code{DataGridServer()} handles pagination, sorting, and filtering
+#' automatically. For manual control (e.g. database queries), supply
+#' pre-sliced \code{rows} together with an explicit \code{rowCount}.
+#'
 #' @param inputId Character. The Shiny input ID. When pagination, sorting, or
 #'   filtering changes, the new state is available as \code{input$<inputId>}
 #'   in the server. The value is a list with elements \code{pagination_model}
 #'   (list with \code{page} and \code{pageSize}), \code{sort_model} (list of
 #'   sort items), and \code{filter_model} (list with \code{items}).
-#' @param rows A data.frame of rows for the current page.
+#' @param rows A data.frame. Pass the \strong{full} dataset (like
+#'   \code{DataGrid()}) and let \code{DataGridServer()} handle pagination
+#'   automatically, or pass a pre-sliced page together with an explicit
+#'   \code{rowCount} for manual control.
 #' @param columns Column definitions (list of lists). If NULL, auto-generated
 #'   from \code{names(rows)}.
-#' @param rowCount Integer. Total number of rows across all pages. If
-#'   \code{NULL}, the prop is not sent and MUI handles it as unknown.
+#' @param rowCount Integer. When provided, \code{rows} is assumed to be
+#'   already paginated and \code{rowCount} is used as the total row count
+#'   (manual mode). When \code{NULL} (default), pagination is handled
+#'   automatically from the full \code{rows} dataset.
 #' @param loading Logical. Whether to show the loading indicator. If
 #'   \code{NULL}, MUI defaults to \code{FALSE}.
 #' @param initialPageSize Integer. Convenience for setting the initial page
 #'   size. Builds MUI's \code{initialState} prop. If \code{NULL}, MUI defaults
-#'   to 100. Should match the \code{pageSize} argument of
-#'   \code{processGridParams}.
+#'   to 100. Also sets the page size for the first automatic render before the
+#'   grid has sent state. Must be included in \code{pageSizeOptions}.
 #' @param pageSizeOptions Integer vector. Available page size options. If
 #'   \code{NULL}, MUI defaults to \code{c(25, 50, 100)}.
 #' @param filterDebounce Integer. Milliseconds to debounce filter input before
@@ -191,6 +202,16 @@ processGridParams <- function(data, params, pageSize = 100L) {
 #'
 #' @examples
 #' \dontrun{
+#' # Simple usage: pass the full dataset, pagination is handled automatically
+#' output$grid <- renderReact({
+#'   DataGridServer("grid_params",
+#'     rows = my_data,
+#'     initialPageSize = 10L,
+#'     pageSizeOptions = c(10L, 25L, 50L)
+#'   )
+#' })
+#'
+#' # Manual usage: handle pagination yourself (e.g. database queries)
 #' output$grid <- renderReact({
 #'   result <- processGridParams(my_data, input$grid_params, pageSize = 10L)
 #'   DataGridServer("grid_params",
@@ -215,23 +236,51 @@ DataGridServer <- function(
   filterDebounce = NULL,
   ...
 ) {
-  if (is.null(columns) && !is.null(rows)) {
-    columns <- data.frame(field = setdiff(names(rows), "id"))
-  }
-  rows <- .inject_id(rows)
   if (
     !is.null(initialPageSize) &&
       !is.null(pageSizeOptions) &&
       !initialPageSize %in% pageSizeOptions
   ) {
-    warning(
+    stop(
       "initialPageSize (",
       initialPageSize,
       ") is not in pageSizeOptions (",
       paste(pageSizeOptions, collapse = ", "),
-      "). MUI requires the initial page size to be included."
+      "). MUI requires the initial page size to be included in pageSizeOptions."
     )
   }
+  session <- shiny::getDefaultReactiveDomain()
+  if (!is.null(session)) {
+    registry <- session$userData$.datagrid_input_registry
+    if (is.null(registry)) registry <- list()
+    current_output <- shiny::getCurrentOutputInfo()$name
+    # Clear any stale entry previously owned by this output (e.g. inputId changed)
+    stale <- names(registry)[vapply(registry, identical, logical(1), current_output)]
+    if (length(stale) > 0) {
+      registry[stale] <- NULL
+    }
+    claimed_by <- registry[[inputId]]
+    if (!is.null(claimed_by) && !identical(claimed_by, current_output)) {
+      stop(
+        'inputId "', inputId, '" is already used by output "', claimed_by, '". ',
+        "Each DataGridServer() must have a unique inputId."
+      )
+    }
+    registry[[inputId]] <- current_output
+    session$userData$.datagrid_input_registry <- registry
+  }
+  # Automatic mode: rowCount not supplied, so run processGridParams internally.
+  if (is.null(rowCount) && !is.null(rows)) {
+    params <- if (!is.null(session)) session$input[[inputId]] else NULL
+    page_size <- if (!is.null(initialPageSize)) as.integer(initialPageSize) else 100L
+    result <- processGridParams(rows, params, pageSize = page_size)
+    rows <- result$rows
+    rowCount <- result$rowCount
+  }
+  if (is.null(columns) && !is.null(rows)) {
+    columns <- data.frame(field = setdiff(names(rows), "id"))
+  }
+  rows <- .inject_id(rows)
   dots <- list(...)
   protected <- c("paginationMode", "sortingMode", "filterMode", "pagination")
   overridden <- intersect(names(dots), protected)

@@ -462,3 +462,239 @@ test_that("handles zero-row data.frame with sort and filter", {
   expect_equal(result$rowCount, 0)
   expect_equal(nrow(result$rows), 0)
 })
+
+# --- endsWith operator ---
+
+test_that("filters with endsWith operator", {
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(items = list(
+      list(field = "name", operator = "endsWith", value = "20")
+    ))
+  )
+  result <- processGridParams(df, params)
+  expect_equal(result$rowCount, 1)
+  expect_equal(result$rows$name, "Row 20")
+})
+
+# --- not / != operator ---
+
+test_that("filters with not operator", {
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(items = list(
+      list(field = "group", operator = "not", value = "A")
+    ))
+  )
+  result <- processGridParams(df, params)
+  expect_equal(result$rowCount, 10)
+  expect_true(all(result$rows$group == "B"))
+})
+
+test_that("filters with != operator", {
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(items = list(
+      list(field = "group", operator = "!=", value = "B")
+    ))
+  )
+  result <- processGridParams(df, params)
+  expect_equal(result$rowCount, 10)
+  expect_true(all(result$rows$group == "A"))
+})
+
+# --- >= and <= operators ---
+
+test_that("filters with >= operator", {
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(items = list(
+      list(field = "value", operator = ">=", value = "18")
+    ))
+  )
+  result <- processGridParams(df, params)
+  expect_equal(result$rowCount, 3)
+  expect_equal(result$rows$value, c(18, 19, 20))
+})
+
+test_that("filters with <= operator", {
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(items = list(
+      list(field = "value", operator = "<=", value = "3")
+    ))
+  )
+  result <- processGridParams(df, params)
+  expect_equal(result$rowCount, 3)
+  expect_equal(result$rows$value, c(1, 2, 3))
+})
+
+# --- isAnyOf operator ---
+
+test_that("filters with isAnyOf operator", {
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(items = list(
+      list(field = "group", operator = "isAnyOf", value = c("A", "B"))
+    ))
+  )
+  result <- processGridParams(df, params)
+  expect_equal(result$rowCount, 20)
+})
+
+test_that("isAnyOf is case-insensitive", {
+  df_case <- data.frame(id = 1:3, status = c("Active", "Inactive", "active"))
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(items = list(
+      list(field = "status", operator = "isAnyOf", value = c("active"))
+    ))
+  )
+  result <- processGridParams(df_case, params)
+  expect_equal(result$rowCount, 2)
+})
+
+test_that("isAnyOf with empty value list matches no rows", {
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(items = list(
+      list(field = "group", operator = "isAnyOf", value = character(0))
+    ))
+  )
+  result <- processGridParams(df, params)
+  expect_equal(result$rowCount, 0)
+})
+
+# --- Date filter operators ---
+
+test_that("filters with after operator", {
+  df_dates <- data.frame(
+    id = 1:5,
+    date = as.Date(c("2024-01-01", "2024-06-15", "2024-12-31", "2025-01-01", "2025-06-15"))
+  )
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(items = list(
+      list(field = "date", operator = "after", value = "2024-12-31")
+    ))
+  )
+  result <- processGridParams(df_dates, params)
+  expect_equal(result$rowCount, 2)
+  expect_true(all(result$rows$date > as.Date("2024-12-31")))
+})
+
+test_that("filters with onOrAfter operator", {
+  df_dates <- data.frame(
+    id = 1:5,
+    date = as.Date(c("2024-01-01", "2024-06-15", "2024-12-31", "2025-01-01", "2025-06-15"))
+  )
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(items = list(
+      list(field = "date", operator = "onOrAfter", value = "2024-12-31")
+    ))
+  )
+  result <- processGridParams(df_dates, params)
+  expect_equal(result$rowCount, 3)
+  expect_true(all(result$rows$date >= as.Date("2024-12-31")))
+})
+
+test_that("filters with before operator", {
+  df_dates <- data.frame(
+    id = 1:5,
+    date = as.Date(c("2024-01-01", "2024-06-15", "2024-12-31", "2025-01-01", "2025-06-15"))
+  )
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(items = list(
+      list(field = "date", operator = "before", value = "2024-06-15")
+    ))
+  )
+  result <- processGridParams(df_dates, params)
+  expect_equal(result$rowCount, 1)
+  expect_equal(result$rows$date, as.Date("2024-01-01"))
+})
+
+test_that("filters with onOrBefore operator", {
+  df_dates <- data.frame(
+    id = 1:5,
+    date = as.Date(c("2024-01-01", "2024-06-15", "2024-12-31", "2025-01-01", "2025-06-15"))
+  )
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(items = list(
+      list(field = "date", operator = "onOrBefore", value = "2024-06-15")
+    ))
+  )
+  result <- processGridParams(df_dates, params)
+  expect_equal(result$rowCount, 2)
+  expect_true(all(result$rows$date <= as.Date("2024-06-15")))
+})
+
+# --- Multi-column sort ---
+
+test_that("multi-column sort applies all sort items", {
+  df_multi <- data.frame(
+    id = 1:6,
+    group = c("A", "B", "A", "B", "A", "B"),
+    value = c(3, 1, 1, 3, 2, 2)
+  )
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(
+      list(field = "group", sort = "asc"),
+      list(field = "value", sort = "desc")
+    ),
+    filter_model = list(items = list())
+  )
+  result <- processGridParams(df_multi, params)
+  # Group A sorted desc by value: 3, 2, 1; then Group B: 3, 2, 1
+  expect_equal(result$rows$group, c("A", "A", "A", "B", "B", "B"))
+  expect_equal(result$rows$value, c(3, 2, 1, 3, 2, 1))
+})
+
+# --- logicOperator defaults ---
+
+test_that("logicOperator defaults to AND when not provided", {
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(
+      items = list(
+        list(field = "group", operator = "equals", value = "A"),
+        list(field = "value", operator = ">", value = "5")
+      )
+    )
+  )
+  result <- processGridParams(df, params)
+  expect_equal(result$rowCount, 5)
+  expect_true(all(result$rows$group == "A" & result$rows$value > 5))
+})
+
+test_that("logicOperator defaults to AND when explicitly NULL", {
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(
+      logicOperator = NULL,
+      items = list(
+        list(field = "group", operator = "equals", value = "A"),
+        list(field = "value", operator = ">", value = "5")
+      )
+    )
+  )
+  result <- processGridParams(df, params)
+  expect_equal(result$rowCount, 5)
+})

@@ -121,3 +121,95 @@ test_that("DataGridServer excludes id from auto-generated columns", {
   expect_false("id" %in% fields)
   expect_equal(fields, c("name", "height"))
 })
+
+test_that("DataGridServer errors when initialPageSize not in pageSizeOptions", {
+  df <- data.frame(id = 1, name = "Luke")
+  expect_error(
+    DataGridServer(
+      inputId = "grid",
+      rows = df,
+      rowCount = 1L,
+      initialPageSize = 15L,
+      pageSizeOptions = c(10L, 25L, 50L)
+    ),
+    "initialPageSize"
+  )
+})
+
+test_that("DataGridServer builds initialState from initialPageSize", {
+  df <- data.frame(id = 1, name = "Luke")
+  props <- get_props(DataGridServer(
+    inputId = "grid",
+    rows = df,
+    rowCount = 1L,
+    initialPageSize = 25L,
+    pageSizeOptions = c(25L, 50L)
+  ))
+  expect_equal(props$initialState$pagination$paginationModel$pageSize, 25L)
+  expect_equal(props$initialState$pagination$paginationModel$page, 0L)
+})
+
+test_that("DataGridServer initialState is NULL when initialPageSize is NULL", {
+  df <- data.frame(id = 1, name = "Luke")
+  props <- get_props(DataGridServer(
+    inputId = "grid",
+    rows = df,
+    rowCount = 1L
+  ))
+  expect_null(props$initialState)
+})
+
+test_that("DataGridServer sets server-mode props", {
+  df <- data.frame(id = 1, name = "Luke")
+  props <- get_props(DataGridServer(
+    inputId = "grid",
+    rows = df,
+    rowCount = 1L
+  ))
+  expect_equal(props$paginationMode, "server")
+  expect_equal(props$sortingMode, "server")
+  expect_equal(props$filterMode, "server")
+  expect_true(props$pagination)
+})
+
+test_that("DataGridServer passes loading prop", {
+  df <- data.frame(id = 1, name = "Luke")
+  props <- get_props(DataGridServer(
+    inputId = "grid",
+    rows = df,
+    rowCount = 1L,
+    loading = TRUE
+  ))
+  expect_true(props$loading)
+})
+
+test_that("DataGridServer passes filterDebounce prop", {
+  df <- data.frame(id = 1, name = "Luke")
+  props <- get_props(DataGridServer(
+    inputId = "grid",
+    rows = df,
+    rowCount = 1L,
+    filterDebounce = 500L
+  ))
+  expect_equal(props$filterDebounce, 500L)
+})
+
+test_that("DataGridServer passes extra props via ...", {
+  df <- data.frame(id = 1, name = "Luke")
+  props <- get_props(DataGridServer(
+    inputId = "grid",
+    rows = df,
+    rowCount = 1L,
+    density = "compact",
+    disableColumnFilter = TRUE
+  ))
+  expect_equal(props$density, "compact")
+  expect_true(props$disableColumnFilter)
+})
+
+test_that("DataGridServer handles NULL rows", {
+  result <- DataGridServer(inputId = "grid", rows = NULL, rowCount = 0L)
+  expect_s3_class(result, "shiny.tag")
+  props <- get_props(result)
+  expect_null(props$columns)
+})
