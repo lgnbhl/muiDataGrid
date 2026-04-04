@@ -1,0 +1,236 @@
+---
+title: "Row Selection"
+format:
+  html:
+    minimal: true
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Row Selection}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+# Row Selection
+
+The grid supports both checkbox and click-based row selection. Selected row IDs are sent to Shiny via `onRowSelectionModelChange`, making it easy to react to user selections in the server.
+
+> All examples on this page require a running Shiny session.
+
+---
+
+## Basic Checkbox Selection
+
+Enable checkboxes with `checkboxSelection = TRUE`. Use `onRowSelectionModelChange` to send the selected IDs to a Shiny input whenever the selection changes:
+
+```r
+library(shiny)
+library(bslib)
+library(muiDataGrid)
+library(dplyr)
+
+df <- starwars |> select(name, height, mass, species) |> head(10)
+
+ui <- page_fluid(
+  reactOutput("grid"),
+  verbatimTextOutput("selection_info")
+)
+
+server <- function(input, output, session) {
+  output$grid <- renderReact({
+    DataGrid(
+      rows = df,
+      checkboxSelection = TRUE,
+      onRowSelectionModelChange = JS(
+        "(model) => Shiny.setInputValue('selected_rows', Array.from(model.ids))"
+      )
+    )
+  })
+
+  output$selection_info <- renderPrint({
+    ids <- input$selected_rows
+    if (is.null(ids) || length(ids) == 0) {
+      cat("No rows selected.")
+    } else {
+      cat("Selected row IDs:", paste(ids, collapse = ", "), "\n")
+      cat("Count:", length(ids))
+    }
+  })
+}
+
+shinyApp(ui, server)
+```
+
+`input$selected_rows` is a numeric vector of the selected row IDs (integers assigned automatically by `muiDataGrid`). It updates in real time as the user checks or unchecks rows.
+
+---
+
+## Using Selected Rows
+
+A common pattern is to use the selected IDs to filter the source data frame and display or process the selected records:
+
+```r
+library(shiny)
+library(bslib)
+library(muiDataGrid)
+library(dplyr)
+
+df <- starwars |> select(name, height, mass, species, homeworld) |> head(20)
+
+ui <- page_fluid(
+  h4("Select characters to compare"),
+  reactOutput("grid"),
+  hr(),
+  h4("Selected characters"),
+  tableOutput("selected_table")
+)
+
+server <- function(input, output, session) {
+  output$grid <- renderReact({
+    DataGrid(
+      rows = df,
+      checkboxSelection = TRUE,
+      onRowSelectionModelChange = JS(
+        "(model) => Shiny.setInputValue('selected_rows', Array.from(model.ids))"
+      )
+    )
+  })
+
+  output$selected_table <- renderTable({
+    req(input$selected_rows)
+    df[as.integer(input$selected_rows), ]
+  })
+}
+
+shinyApp(ui, server)
+```
+
+> **Note:** `muiDataGrid` assigns row IDs starting at `1` using `seq_len(nrow(rows))`. Use `as.integer(input$selected_rows)` to index back into the original data frame.
+
+---
+
+## Single Row Selection
+
+Disable multi-row selection with `disableMultipleRowSelection = TRUE`. This is useful when only one record should be selected at a time, for example to display its details in a sidebar:
+
+```r
+library(shiny)
+library(bslib)
+library(muiDataGrid)
+library(dplyr)
+
+df <- starwars |> select(name, height, mass, species, homeworld, birth_year) |> head(20)
+
+ui <- page_fluid(
+  layout_columns(
+    col_widths = c(8, 4),
+    reactOutput("grid"),
+    card(
+      card_header("Character details"),
+      uiOutput("details")
+    )
+  )
+)
+
+server <- function(input, output, session) {
+  output$grid <- renderReact({
+    DataGrid(
+      rows = df,
+      checkboxSelection = TRUE,
+      disableMultipleRowSelection = TRUE,
+      onRowSelectionModelChange = JS(
+        "(model) => Shiny.setInputValue('selected_rows', Array.from(model.ids))"
+      )
+    )
+  })
+
+  output$details <- renderUI({
+    req(input$selected_rows)
+    row <- df[as.integer(input$selected_rows[1]), ]
+    tagList(
+      tags$b(row$name), tags$br(),
+      tags$span("Height: ", row$height, " cm"), tags$br(),
+      tags$span("Mass: ", row$mass, " kg"), tags$br(),
+      tags$span("Homeworld: ", row$homeworld)
+    )
+  })
+}
+
+shinyApp(ui, server)
+```
+
+---
+
+## Pre-Selected Rows
+
+Initialise the grid with rows already selected by passing `rowSelectionModel`:
+
+```r
+DataGrid(
+  rows = df,
+  checkboxSelection = TRUE,
+  rowSelectionModel = JS('{ type: "include", ids: new Set([1, 3]) }'),
+  onRowSelectionModelChange = JS(
+    "(model) => Shiny.setInputValue('selected_rows', Array.from(model.ids))"
+  )
+)
+```
+
+---
+
+## With `DataGridServer()` (Server-Side Pagination)
+
+Row selection works the same way with `DataGridServer()`. Because only the current page is sent to the browser, pass `keepNonExistentRowsSelected = TRUE` so that rows selected on a previous page are not lost when the user navigates:
+
+```r
+library(shiny)
+library(bslib)
+library(muiDataGrid)
+
+all_data <- data.frame(
+  id    = 1:500,
+  label = paste("Row", 1:500),
+  value = round(runif(500, 0, 100), 1)
+)
+
+ui <- page_fluid(
+  reactOutput("grid"),
+  verbatimTextOutput("selection_info")
+)
+
+server <- function(input, output, session) {
+  output$grid <- renderReact({
+    DataGridServer(
+      inputId = "grid_params",
+      rows = all_data,
+      initialPageSize = 5L,
+      pageSizeOptions = c(5L, 10L, 20L),
+      checkboxSelection = TRUE,
+      keepNonExistentRowsSelected = TRUE,
+      onRowSelectionModelChange = JS(
+        "(model) => Shiny.setInputValue('selected_rows', Array.from(model.ids))"
+      )
+    )
+  })
+
+  output$selection_info <- renderPrint({
+    ids <- input$selected_rows
+    if (is.null(ids) || length(ids) == 0) {
+      cat("No rows selected.")
+    } else {
+      cat("Selected IDs:", paste(sort(ids), collapse = ", "), "\n")
+      cat("Count:", length(ids))
+    }
+  })
+}
+
+shinyApp(ui, server)
+```
+
+> **Tip:** With server-side pagination, `input$selected_rows` always reflects the full selection across all pages, not just the visible page.

@@ -38,6 +38,8 @@ navbar:
       href: articles/custom-react-js.html
     - text: Server-Side Data
       href: articles/server-side-data.html
+    - text: Row selection with shiny
+      href: articles/row-selection.html
   - text: News
     href: news/index.html
 
