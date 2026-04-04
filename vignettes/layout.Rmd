@@ -17,7 +17,7 @@ knitr::opts_chunk$set(
 )
 ```
 
-```{r setup}
+```{r message=FALSE, warning=FALSE}
 library(muiDataGrid)
 library(dplyr)
 ```
@@ -79,7 +79,6 @@ DataGrid(
 You can add pagination and adjust the page size using `initialState` (here 5 rows per page):
 
 ```{r}
-library(muiDataGrid)
 library(dplyr)
 
 DataGrid(

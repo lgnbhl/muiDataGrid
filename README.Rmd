@@ -34,7 +34,7 @@ dependencies <- jsonlite::fromJSON("js/package.json")$dependencies
 
 ## Install
 
-You can install the development version of muiTreeView like so:
+You can install the development version of muiDataGrid like so:
 
 ``` r
 remotes::install_github("lgnbhl/muiDataGrid")

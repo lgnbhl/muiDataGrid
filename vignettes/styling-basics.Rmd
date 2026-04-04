@@ -17,7 +17,7 @@ knitr::opts_chunk$set(
 )
 ```
 
-```{r setup}
+```{r message=FALSE, warning=FALSE}
 library(muiDataGrid)
 library(dplyr)
 ```
@@ -110,7 +110,7 @@ DataGrid(
   ),
   sx = list(
     "& .custom-header" = list(
-      backgroundColor = "#f0f0f0",
+      backgroundColor = "#7b71cd",
       fontWeight = "bold"
     )
   )

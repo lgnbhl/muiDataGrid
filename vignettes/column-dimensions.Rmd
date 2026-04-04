@@ -17,10 +17,12 @@ knitr::opts_chunk$set(
 )
 ```
 
-```{r setup}
+```{r message=FALSE, warning=FALSE}
 library(muiDataGrid)
 library(dplyr)
 ```
+
+# Column Dimensions
 
 Column dimensions control how columns are sized within the data grid. The grid provides flexible options for both fixed and dynamic column widths.
 

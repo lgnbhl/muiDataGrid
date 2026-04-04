@@ -58,7 +58,7 @@ jobs:
         uses: JamesIves/github-pages-deploy-action@v4.8.0
         with:
           clean: true
-          branch: gh-pages
+          branch: main
           folder: muiDataGrid
           repository-name: lgnbhl/lgnbhl.github.io
           target-folder: muiDataGrid

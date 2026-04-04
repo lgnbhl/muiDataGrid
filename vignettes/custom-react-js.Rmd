@@ -17,20 +17,22 @@ knitr::opts_chunk$set(
 )
 ```
 
-```{r setup}
+```{r message=FALSE, warning=FALSE}
 library(muiDataGrid)
 library(dplyr)
 ```
 
+# Custom with React JS
+
 ## Custom columns using Javascript
 
-Using `valueGetter` or `valueGetter`:
+Using `valueGetter` or `valueFormatter`:
 
 ```{r}
 # https://stackoverflow.com/a/79508826
 library(dplyr)
 
-# "id" column is mandatory
+# "id" is auto-generated if not present
 df <- starwars |>
   select(1:2) |>
   mutate(
@@ -69,7 +71,7 @@ Using `valueGetter` and `renderCell`:
 ```{r}
 library(shiny.react)
 
-# "id" column is mandatory
+# "id" is auto-generated if not present
 df <- starwars |>
   select(1:2) |>
   mutate(
