@@ -32,6 +32,10 @@ Column definitions in the Data Grid specify how data is displayed, formatted, an
 
 The unique identifier for the column (required). Must match a field in the row data.
 
+`DataGrid()` internally handles the mandatory `"id"` argument required by MUI Data Grid. If the dataset does not contain an `"id"` column, one is automatically added based on row number using `nrow()`. If an `"id"` column already exists in the dataset, it is used as-is.
+
+> **Warning:** If your dataframe already contains an `"id"` column, each value must be unique — duplicate IDs will cause unexpected behavior in the grid.
+
 ```{r}
 DataGrid(
   rows = starwars |> select(name, height, mass) |> head(),
