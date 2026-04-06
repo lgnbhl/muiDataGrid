@@ -1,0 +1,106 @@
+---
+title: "Bootstrap CSS Conflicts"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Bootstrap CSS Conflicts}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+# Bootstrap CSS Conflicts
+
+When embedding `muiDataGrid` inside a Shiny app, you may notice that the grid looks visually off: fonts appear too small, spacing feels wrong, or components do not render at the expected size. This is almost always caused by a CSS conflict between Bootstrap and MUI.
+
+## The Root Cause
+
+Default R Shiny uses Bootstrap 3, which for example sets a global `font-size: 10px` on the page. MUI components rely on the browser's default font size for their sizing, so this Bootstrap rule causes the grid to render too small — with compressed rows, small icons, and broken spacing.
+
+## Approaches to Resolve the Conflict
+
+### Option 1 (Recommended): Use `muiMaterial`
+
+The cleanest solution is to build the entire Shiny UI using the [`muiMaterial`](https://github.com/lgnbhl/muiMaterial) R package. `muiMaterial` wraps MUI components for use in Shiny, so there is no Bootstrap in the picture at all. MUI's own CSS baseline applies correctly, and `muiDataGrid` renders as intended.
+
+```r
+library(shiny)
+library(muiMaterial)
+library(muiDataGrid)
+
+ui <- muiMaterial::muiMaterialPage(
+  muiMaterial::Typography("R Shiny with muiMaterial and muiDataGrid"),
+  muiDataGrid::DataGrid(
+    rows = head(dplyr::select(dplyr::starwars, name, height, mass))
+  )
+)
+
+server <- function(input, output, session) {}
+
+shinyApp(ui, server)
+```
+
+This approach is the most reliable because both `muiDataGrid` and the surrounding UI share the same CSS foundation.
+
+### Option 2: Use `bslib` (Bootstrap 5)
+
+Bootstrap 5 removed the `html { font-size: 10px }` rule and reverts to the browser default of `16px`. If you want to keep Bootstrap in your app, switching to `bslib` with Bootstrap 5 eliminates the conflict.
+
+```r
+library(shiny)
+library(bslib)
+library(muiDataGrid)
+
+ui <- page_fluid(
+  theme = bs_theme(version = 5),
+  DataGrid(
+    rows = head(dplyr::select(dplyr::starwars, name, height, mass))
+  )
+)
+
+server <- function(input, output, session) {}
+
+shinyApp(ui, server)
+```
+
+### Option 3: Override MUI Font Sizes via CSS
+
+As a last resort, if you cannot change the Bootstrap version, wrap the `DataGrid` in a container and override the MUI font-size classes with explicit pixel values, scoped to that container only:
+
+```r
+library(shiny)
+library(muiDataGrid)
+
+ui <- fluidPage(
+  tags$head(
+    tags$style(HTML("
+      #datagrid-container .MuiDataGrid-root,
+      #datagrid-container .MuiDataGrid-columnHeaderTitle,
+      #datagrid-container .MuiDataGrid-cell,
+      #datagrid-container .MuiTablePagination-root,
+      #datagrid-container .MuiTablePagination-displayedRows,
+      #datagrid-container .MuiTablePagination-selectLabel,
+      #datagrid-container .MuiSelect-select {
+        font-size: 14px !important;
+      }
+    "))
+  ),
+  tags$div(
+    id = "datagrid-container",
+    DataGrid(
+      rows = head(dplyr::select(dplyr::starwars, name, height, mass))
+    )
+  )
+)
+
+server <- function(input, output, session) {}
+
+shinyApp(ui, server)
+```
+
+This keeps the fix scoped to the grid and does not affect other Bootstrap-styled elements in your app. Note that some spacing and row height values in MUI also use `rem`, so minor sizing differences may still appear compared to a Bootstrap-free environment.

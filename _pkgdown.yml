@@ -36,10 +36,14 @@ navbar:
       href: articles/styling-basics.html
     - text: Custom with React JS
       href: articles/custom-react-js.html
-    - text: Server-Side Data
-      href: articles/server-side-data.html
+  - text: R Shiny
+    menu:
+    - text: Bootstrap CSS Conflicts
+      href: articles/bootstrap-css-conflicts.html
     - text: Row selection with shiny
       href: articles/row-selection.html
+    - text: Server-Side Data
+      href: articles/server-side-data.html
   - text: News
     href: news/index.html
 
