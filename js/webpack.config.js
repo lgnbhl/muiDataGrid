@@ -23,9 +23,13 @@ const config = {
     ],
   },
   externals: {
-    react: 'jsmodule["react"]',
+    'react': 'jsmodule["react"]',
     'react-dom': 'jsmodule["react-dom"]',
     '@/shiny.react': 'jsmodule["@/shiny.react"]',
+    '@/muiMaterial': 'jsmodule["@/muiMaterial"]',
+    '@mui/material': 'jsmodule["@mui/material"]',
+    '@mui/system': 'jsmodule["@mui/system"]',
+    '@mui/utils':  'jsmodule["@mui/utils"]'
   },
   plugins: [new webpack.DefinePlugin({ 'process.env': '{}' })],
 };

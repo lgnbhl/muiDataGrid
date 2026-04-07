@@ -388,6 +388,40 @@ DataGrid(
 )
 ```
 
+## Using muiMaterial ThemeProvider
+
+You can use the `ThemeProvider` from the `muiMaterial` package to apply a global MUI theme to the Data Grid. This allows you to customize colors, typography, and other theme tokens that cascade into the grid automatically.
+
+```{r}
+library(shiny)
+library(muiMaterial)
+library(muiDataGrid)
+library(dplyr)
+
+muiMaterialPage(
+  ThemeProvider(
+    theme = list(
+      palette = list(
+        mode = "dark"
+      ),
+      typography = list(
+        fontSize = 16
+      )
+    ),
+    DataGrid(
+      rows = starwars |> select(name, height, mass, species) |> head(),
+      sx = list(
+        "& .MuiTablePagination-root" = list(color = "#ffffff"),
+        "& .MuiTablePagination-selectLabel" = list(color = "#ffffff"),
+        "& .MuiTablePagination-displayedRows" = list(color = "#ffffff"),
+        "& .MuiTablePagination-select" = list(color = "#ffffff"),
+        "& .MuiSvgIcon-root" = list(color = "#ffffff")
+      )
+    )
+  )
+)
+```
+
 ## Complete Styling Example
 
 Here's a comprehensive example combining multiple styling techniques:
