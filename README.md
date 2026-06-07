@@ -50,10 +50,10 @@ library(dplyr)
 
 DataGrid(
   rows = starwars,
-  columns = data.frame(
-    field = c("name", "height", "mass"), # column names
-    headerName = c("Names", "Height (cm)", "Mass (kg)"),
-    description = c("Names of Starwars character", "Height in centimeter", "Mass in kilogram")
+  columns = list(
+    list(field = "name", headerName = "Names", description = "Names of Starwars character"),
+    list(field = "height", headerName = "Height (cm)", description = "Height in centimeter"),
+    list(field = "mass", headerName = "Mass (kg)", description = "Mass in kilogram")
   ),
   initialState = list(
     pagination = list(

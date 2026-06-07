@@ -1,26 +1,129 @@
 `%||%` <- function(x, y) if (is.null(x)) y else x
 
-# Inject a stable integer id column if one is not already present.
+# Inject a stable integer id column if one is not already present. When the
+# caller supplies their own id, warn on duplicates: MUI X Data Grid requires
+# unique row ids and otherwise hard-errors in the browser ("all rows must have
+# a unique id"), which is far harder to diagnose than an R-side warning.
 .inject_id <- function(rows) {
-  if (!is.null(rows) && !"id" %in% names(rows)) {
-    rows$id <- seq_len(nrow(rows))
+  if (!is.null(rows)) {
+    if (!"id" %in% names(rows)) {
+      rows$id <- seq_len(nrow(rows))
+    } else if (anyDuplicated(rows$id) > 0) {
+      warning(
+        "The 'id' column has duplicate values; MUI X Data Grid requires unique ",
+        "row ids and will error in the browser. Ensure 'id' is unique.",
+        call. = FALSE
+      )
+    }
   }
   rows
 }
 
+# Map an R column's class to a MUI X Data Grid column `type`. Without this the
+# grid treats every auto-generated column as a string, so numeric columns get
+# string filter operators (contains/startsWith) instead of >/<, lose
+# right-alignment, and sort lexically.
+#
+# Only `number` and `boolean` are inferred: both serialize to a JSON
+# value (number / true|false) that matches what the MUI type expects at
+# runtime. Date/POSIXct are deliberately left as `string` — JSON has no date
+# type, so they reach the browser as strings, and MUI's `date`/`dateTime`
+# columns expect real JS Date objects (string input causes off-by-one display
+# from UTC parsing, `Invalid Date` in some browsers, and broken date filters).
+# ISO date strings already sort chronologically as strings, so this is safe.
+# Users who want the date-picker UX should set `type = "date"` plus a
+# `valueGetter` explicitly.
+.mui_col_type <- function(x) {
+  if (is.logical(x)) {
+    "boolean"
+  } else if (is.numeric(x)) {
+    "number"
+  } else {
+    "string"
+  }
+}
+
+# Fill in a `type` for any column left untyped, inferring it from the matching
+# column's R class (see .mui_col_type). MUI does not auto-detect type from row
+# values, so without this an explicit `columns` spec that omits `type` leaves
+# numeric columns as strings (left-aligned, string filter operators). An
+# explicit `type` is always respected. Handles both supported `columns` shapes:
+# a data.frame (one row per column) and a list of per-column lists.
+.fill_column_types <- function(columns, rows) {
+  if (is.null(columns) || is.null(rows)) {
+    return(columns)
+  }
+  if (is.data.frame(columns)) {
+    if (!"field" %in% names(columns)) {
+      return(columns)
+    }
+    # Infer for every column lacking an explicit type. Treat a missing `type`
+    # column, NA, and "" all as "untyped" so a *partial* type column (some rows
+    # set, others NA) still gets the unset rows inferred — matching the
+    # per-column behaviour of the list form below. Explicit types are kept.
+    type <- if ("type" %in% names(columns)) as.character(columns$type) else rep(NA_character_, nrow(columns))
+    needs <- is.na(type) | type == ""
+    if (any(needs)) {
+      fields <- as.character(columns$field)
+      inferred <- vapply(
+        fields,
+        function(f) if (f %in% names(rows)) .mui_col_type(rows[[f]]) else "string",
+        character(1)
+      )
+      type[needs] <- inferred[needs]
+      columns$type <- type
+    }
+    return(columns)
+  }
+  if (is.list(columns)) {
+    columns <- lapply(columns, function(col) {
+      if (is.list(col) && is.null(col$type) &&
+        !is.null(col$field) && col$field %in% names(rows)) {
+        inferred <- .mui_col_type(rows[[col$field]])
+        # Only add non-default types; "string" is MUI's default, so setting it
+        # explicitly would just clutter the user's column definition.
+        if (inferred != "string") {
+          col$type <- inferred
+        }
+      }
+      col
+    })
+  }
+  columns
+}
+
+# Auto-generate column definitions from a data.frame, excluding the id column
+# and inferring each column's MUI type from its R class.
+.auto_columns <- function(rows) {
+  fields <- setdiff(names(rows), "id")
+  .fill_column_types(
+    data.frame(field = fields, stringsAsFactors = FALSE),
+    rows
+  )
+}
+
 #' DataGrid
 #'
-#' @param rows A data.frame of rows. An \code{id} column is added automatically
-#'   from row names if not already present.
-#' @param columns Column definitions (list of lists). If \code{NULL},
-#'   auto-generated from \code{names(rows)}.
+#' @param rows A data.frame of rows. An \code{id} column of 1-based row numbers
+#'   is added automatically if not already present.
+#' @param columns Column definitions (list of lists, or a data.frame with one
+#'   row per column). If \code{NULL}, auto-generated from \code{names(rows)}.
+#'   Any column without an explicit \code{type} has one inferred from the
+#'   matching \code{rows} column: numeric columns get MUI's \code{number} type
+#'   and logical columns its \code{boolean} type; all other classes (including
+#'   \code{Date}, \code{POSIXct}, and factors) default to \code{string}. A
+#'   \code{type} you set yourself is always kept. To get MUI's date-picker
+#'   filtering, set \code{type = "date"} together with a \code{valueGetter} that
+#'   returns a JS \code{Date} explicitly.
 #' @param ... Additional props passed directly to the MUI DataGrid component.
 #'
 #' @rdname DataGrid
 #' @export
 DataGrid <- function(rows = NULL, columns = NULL, ...) {
-  if (is.null(columns)) {
-    columns <- data.frame(field = names(rows))
+  if (is.null(columns) && !is.null(rows)) {
+    columns <- .auto_columns(rows)
+  } else if (!is.null(columns)) {
+    columns <- .fill_column_types(columns, rows)
   }
   rows <- .inject_id(rows)
   tag <- shiny.react::reactElement(
@@ -179,7 +282,8 @@ processGridParams <- function(data, params, pageSize = 100L) {
 #'   automatically, or pass a pre-sliced page together with an explicit
 #'   \code{rowCount} for manual control.
 #' @param columns Column definitions (list of lists). If NULL, auto-generated
-#'   from \code{names(rows)}.
+#'   from \code{names(rows)}, with each column's \code{type} inferred from its
+#'   R class (see \code{\link{DataGrid}}).
 #' @param rowCount Integer. When provided, \code{rows} is assumed to be
 #'   already paginated and \code{rowCount} is used as the total row count
 #'   (manual mode). When \code{NULL} (default), pagination is handled
@@ -278,7 +382,9 @@ DataGridServer <- function(
     rowCount <- result$rowCount
   }
   if (is.null(columns) && !is.null(rows)) {
-    columns <- data.frame(field = setdiff(names(rows), "id"))
+    columns <- .auto_columns(rows)
+  } else if (!is.null(columns)) {
+    columns <- .fill_column_types(columns, rows)
   }
   rows <- .inject_id(rows)
   dots <- list(...)

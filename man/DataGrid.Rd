@@ -7,11 +7,18 @@
 DataGrid(rows = NULL, columns = NULL, ...)
 }
 \arguments{
-\item{rows}{A data.frame of rows. An \code{id} column is added automatically
-from row names if not already present.}
+\item{rows}{A data.frame of rows. An \code{id} column of 1-based row numbers
+is added automatically if not already present.}
 
-\item{columns}{Column definitions (list of lists). If \code{NULL},
-auto-generated from \code{names(rows)}.}
+\item{columns}{Column definitions (list of lists, or a data.frame with one
+row per column). If \code{NULL}, auto-generated from \code{names(rows)}.
+Any column without an explicit \code{type} has one inferred from the
+matching \code{rows} column: numeric columns get MUI's \code{number} type
+and logical columns its \code{boolean} type; all other classes (including
+\code{Date}, \code{POSIXct}, and factors) default to \code{string}. A
+\code{type} you set yourself is always kept. To get MUI's date-picker
+filtering, set \code{type = "date"} together with a \code{valueGetter} that
+returns a JS \code{Date} explicitly.}
 
 \item{...}{Additional props passed directly to the MUI DataGrid component.}
 }
