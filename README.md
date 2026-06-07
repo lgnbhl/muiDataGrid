@@ -8,7 +8,7 @@
 [![CRAN
 status](https://www.r-pkg.org/badges/version/muiDataGrid)](https://CRAN.R-project.org/package=muiDataGrid)
 [![R-CMD-check](https://github.com/lgnbhl/muiDataGrid/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/lgnbhl/muiDataGrid/actions/workflows/R-CMD-check.yaml)
-[![](https://img.shields.io/badge/@mui/x--data--grid-%5E8.28.1-blue.svg)](https://mui.com/x/react-data-grid/)
+[![](https://img.shields.io/badge/@mui/x--data--grid-9.0.2-blue.svg)](https://mui.com/x/react-data-grid/)
 [![](https://img.shields.io/badge/react-18.3.1-blue.svg)](https://mui.com/x/react-data-grid/)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Follow-E4405F?style=social&logo=linkedin)](https://www.linkedin.com/in/FelixLuginbuhl)
 <!-- badges: end -->

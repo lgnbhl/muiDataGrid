@@ -19,14 +19,16 @@ knitr::opts_chunk$set(
 
 <!-- badges: start -->
 ```{r message=FALSE, warning=FALSE, include=FALSE}
-# get JS dependencies
-dependencies <- jsonlite::fromJSON("js/package.json")$dependencies
+# get JS dependencies (react now lives in devDependencies)
+pkg <- jsonlite::fromJSON("js/package.json")
+gridVersion <- pkg$dependencies[["@mui/x-data-grid"]]
+reactVersion <- pkg$devDependencies[["react"]]
 ```
 
 [![CRAN status](https://www.r-pkg.org/badges/version/muiDataGrid)](https://CRAN.R-project.org/package=muiDataGrid)
 [![R-CMD-check](https://github.com/lgnbhl/muiDataGrid/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/lgnbhl/muiDataGrid/actions/workflows/R-CMD-check.yaml)
-`r badger::badge_custom(names(dependencies)[4], dependencies[4], "blue", "https://mui.com/x/react-data-grid/")`
-`r badger::badge_custom(names(dependencies)[5], dependencies[5], "blue", "https://mui.com/x/react-data-grid/")`
+`r badger::badge_custom("@mui/x-data-grid", gridVersion, "blue", "https://mui.com/x/react-data-grid/")`
+`r badger::badge_custom("react", reactVersion, "blue", "https://mui.com/x/react-data-grid/")`
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Follow-E4405F?style=social&logo=linkedin)](https://www.linkedin.com/in/FelixLuginbuhl)
 <!-- badges: end -->
 

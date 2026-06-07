@@ -403,20 +403,10 @@ muiMaterialPage(
     theme = list(
       palette = list(
         mode = "dark"
-      ),
-      typography = list(
-        fontSize = 16
       )
     ),
     DataGrid(
-      rows = starwars |> select(name, height, mass, species) |> head(),
-      sx = list(
-        "& .MuiTablePagination-root" = list(color = "#ffffff"),
-        "& .MuiTablePagination-selectLabel" = list(color = "#ffffff"),
-        "& .MuiTablePagination-displayedRows" = list(color = "#ffffff"),
-        "& .MuiTablePagination-select" = list(color = "#ffffff"),
-        "& .MuiSvgIcon-root" = list(color = "#ffffff")
-      )
+      rows = starwars |> select(name, height, mass, species) |> head()
     )
   )
 )
