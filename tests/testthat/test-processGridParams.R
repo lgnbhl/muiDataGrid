@@ -79,6 +79,19 @@ test_that("sorts descending", {
   expect_equal(result$rows$value, 20:16)
 })
 
+test_that("skips sort on list-columns instead of erroring", {
+  list_df <- data.frame(id = 1:3, value = c(3, 1, 2))
+  list_df$tags <- list(c("a", "b"), "c", c("d", "e"))
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(list(field = "tags", sort = "asc")),
+    filter_model = list(items = list())
+  )
+  expect_silent(result <- processGridParams(list_df, params))
+  # Unsortable column is ignored; original order preserved
+  expect_equal(result$rows$value, c(3, 1, 2))
+})
+
 test_that("ignores sort on non-existent field", {
   params <- list(
     pagination_model = list(page = 0, pageSize = 5),
@@ -225,7 +238,7 @@ test_that("ignores filter on non-existent field", {
   expect_equal(result$rowCount, 20)
 })
 
-test_that("unknown operator keeps all rows", {
+test_that("unknown operator keeps all rows and warns", {
   params <- list(
     pagination_model = list(page = 0, pageSize = 100),
     sort_model = list(),
@@ -235,7 +248,7 @@ test_that("unknown operator keeps all rows", {
       )
     )
   )
-  result <- processGridParams(df, params)
+  expect_warning(result <- processGridParams(df, params), "Unsupported filter operator")
   expect_equal(result$rowCount, 20)
 })
 
@@ -317,6 +330,20 @@ test_that("filters with = (numeric equality) operator", {
   result <- processGridParams(df, params)
   expect_equal(result$rowCount, 1)
   expect_equal(result$rows$value, 10)
+})
+
+test_that("= operator falls back to string equality for non-numeric columns", {
+  df_case <- data.frame(id = 1:3, status = c("Active", "active", "ACTIVE"))
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(items = list(
+      list(field = "status", operator = "=", value = "active")
+    ))
+  )
+  expect_silent(result <- processGridParams(df_case, params))
+  # Case-insensitive string equality, like "equals" / "!=".
+  expect_equal(result$rowCount, 3)
 })
 
 # --- is operator (case-sensitive) ---
@@ -506,6 +533,21 @@ test_that("filters with != operator", {
   expect_true(all(result$rows$group == "A"))
 })
 
+test_that("!= operator compares numeric columns numerically", {
+  num_df <- data.frame(id = 1:3, value = c(5.1, 5.10, 6))
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(items = list(
+      list(field = "value", operator = "!=", value = "5.1")
+    ))
+  )
+  result <- processGridParams(num_df, params)
+  # 5.1 and 5.10 are the same number, so only the row with 6 remains
+  expect_equal(result$rowCount, 1)
+  expect_equal(result$rows$value, 6)
+})
+
 # --- >= and <= operators ---
 
 test_that("filters with >= operator", {
@@ -641,6 +683,26 @@ test_that("filters with onOrBefore operator", {
   result <- processGridParams(df_dates, params)
   expect_equal(result$rowCount, 2)
   expect_true(all(result$rows$date <= as.Date("2024-06-15")))
+})
+
+test_that("date operators work on character (string-typed) date columns", {
+  # Dates default to type = "string" and can reach R as character strings;
+  # the operator should still compare them chronologically.
+  df_str <- data.frame(
+    id = 1:5,
+    date = c("2024-01-01", "2024-06-15", "2024-12-31", "2025-01-01", "2025-06-15"),
+    stringsAsFactors = FALSE
+  )
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(items = list(
+      list(field = "date", operator = "after", value = "2024-12-31")
+    ))
+  )
+  result <- processGridParams(df_str, params)
+  expect_equal(result$rowCount, 2)
+  expect_equal(result$rows$date, c("2025-01-01", "2025-06-15"))
 })
 
 # --- Multi-column sort ---

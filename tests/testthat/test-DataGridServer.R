@@ -136,6 +136,33 @@ test_that("DataGridServer errors when initialPageSize not in pageSizeOptions", {
   )
 })
 
+test_that("DataGridServer errors when initialPageSize not in default pageSizeOptions", {
+  # pageSizeOptions omitted -> MUI defaults to c(25, 50, 100); 15 is not in it.
+  df <- data.frame(id = 1, name = "Luke")
+  expect_error(
+    DataGridServer(
+      inputId = "grid",
+      rows = df,
+      rowCount = 1L,
+      initialPageSize = 15L
+    ),
+    "initialPageSize"
+  )
+})
+
+test_that("DataGridServer allows initialPageSize in default pageSizeOptions", {
+  df <- data.frame(id = 1, name = "Luke")
+  expect_s3_class(
+    DataGridServer(
+      inputId = "grid",
+      rows = df,
+      rowCount = 1L,
+      initialPageSize = 50L
+    ),
+    "shiny.tag"
+  )
+})
+
 test_that("DataGridServer builds initialState from initialPageSize", {
   df <- data.frame(id = 1, name = "Luke")
   props <- get_props(DataGridServer(
@@ -212,4 +239,84 @@ test_that("DataGridServer handles NULL rows", {
   expect_s3_class(result, "shiny.tag")
   props <- get_props(result)
   expect_null(props$columns)
+})
+
+test_that("DataGridServer warns when rows has more rows than rowCount", {
+  df <- data.frame(id = 1:10, name = paste("Row", 1:10))
+  expect_warning(
+    DataGridServer(inputId = "grid", rows = df, rowCount = 5L),
+    "smaller than nrow"
+  )
+})
+
+test_that("DataGridServer does not warn when rows fits within rowCount", {
+  df <- data.frame(id = 1:5, name = paste("Row", 1:5))
+  expect_no_warning(
+    DataGridServer(inputId = "grid", rows = df, rowCount = 100L)
+  )
+})
+
+test_that("DataGridServer warns and keeps user initialState over initialPageSize", {
+  df <- data.frame(id = 1, name = "Luke")
+  custom_state <- list(pagination = list(paginationModel = list(page = 2L, pageSize = 5L)))
+  expect_warning(
+    result <- DataGridServer(
+      inputId = "grid",
+      rows = df,
+      rowCount = 1L,
+      initialPageSize = 25L,
+      pageSizeOptions = c(25L, 50L),
+      initialState = custom_state
+    ),
+    "Both 'initialState'"
+  )
+  props <- get_props(result)
+  # User's initialState wins; the built one (pageSize 25) must not shadow it.
+  expect_equal(props$initialState$pagination$paginationModel$pageSize, 5L)
+  expect_equal(props$initialState$pagination$paginationModel$page, 2L)
+})
+
+test_that("DataGridServer rejects two live outputs sharing one inputId", {
+  df <- data.frame(name = c("a", "b"), height = c(1, 2))
+  session <- shiny::MockShinySession$new()
+  current <- "outA"
+  testthat::local_mocked_bindings(
+    getCurrentOutputInfo = function(...) list(name = current),
+    .package = "shiny"
+  )
+  shiny::withReactiveDomain(session, {
+    current <- "outA"
+    DataGridServer("grid", rows = df, rowCount = 2L)
+    # A different output claiming the same inputId in the same flush collides.
+    current <- "outB"
+    expect_error(
+      DataGridServer("grid", rows = df, rowCount = 2L),
+      "already used by output"
+    )
+  })
+})
+
+test_that("DataGridServer frees an inputId once its owning output stops rendering", {
+  # Regression: a removed/replaced output must not permanently reserve its
+  # inputId. The end-of-flush registry reset is what releases it; simulate that
+  # reset, then a new output reusing the inputId must succeed.
+  df <- data.frame(name = c("a", "b"), height = c(1, 2))
+  session <- shiny::MockShinySession$new()
+  current <- "outA"
+  testthat::local_mocked_bindings(
+    getCurrentOutputInfo = function(...) list(name = current),
+    .package = "shiny"
+  )
+  shiny::withReactiveDomain(session, {
+    current <- "outA"
+    DataGridServer("grid", rows = df, rowCount = 2L)
+    expect_equal(session$userData$.datagrid_input_registry[["grid"]], "outA")
+    # Emulate the scheduled end-of-flush reset.
+    session$userData$.datagrid_input_registry <- list()
+    session$userData$.datagrid_registry_reset_scheduled <- NULL
+    # outA is gone; outC reuses "grid" on a later flush — must not error.
+    current <- "outC"
+    expect_error(DataGridServer("grid", rows = df, rowCount = 2L), NA)
+    expect_equal(session$userData$.datagrid_input_registry[["grid"]], "outC")
+  })
 })

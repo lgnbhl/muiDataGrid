@@ -19,6 +19,16 @@ knitr::opts_chunk$set(
 
 # Server-Side Data
 
+> **Experimental — specific to this package.** `DataGridServer()` and
+> `processGridParams()` have **no equivalent in MUI X Data Grid**. MUI ships only
+> the building blocks (`paginationMode = "server"` plus callbacks) and leaves the
+> server-side data layer to the developer; this package supplies that layer in R.
+> As a result these two functions are **experimental** and encode a number of
+> opinionated decisions (described below) that may change in future releases. If
+> you depend on the current behaviour, pin the package version. The client-side
+> `DataGrid()` is a thin wrapper over the real MUI component and is **not**
+> experimental.
+
 ## Why server-side data?
 
 By default, `DataGrid()` sends **all rows** to the browser at once. Pagination, sorting, and filtering are handled entirely in JavaScript on the client side. This works well for small datasets, but becomes a problem with large ones:
@@ -141,9 +151,18 @@ Returns a list with:
 | Number | `=`, `!=`, `>`, `>=`, `<`, `<=`, `isEmpty`, `isNotEmpty`, `isAnyOf` |
 | Date | `is`, `not`, `after`, `onOrAfter`, `before`, `onOrBefore`, `isEmpty`, `isNotEmpty` |
 
-Unrecognized operators are ignored (all rows pass). If you need operators not listed here, use manual mode and handle filtering yourself.
+Unrecognized operators pass all rows through (no filtering) **and emit a warning**. If you need operators not listed here, use manual mode and handle filtering yourself.
 
-> **Note:** String operators (`contains`, `equals`, `startsWith`, `endsWith`, `not`) are case-insensitive. The `is` operator is case-sensitive, matching MUI's default behavior.
+> **Note:** String operators (`contains`, `equals`, `startsWith`, `endsWith`, `not`) are case-insensitive. The `is` operator is case-sensitive, matching MUI's default behavior. Because filtering is reimplemented in R, edge cases (locale, accents) can differ from MUI's own client-side filter.
+
+## Opinionated behaviour to be aware of
+
+Because this server-side layer is bespoke (see the experimental note at the top), it makes a few decisions for you. Knowing them avoids surprises:
+
+- **Mode is chosen by `rowCount`.** Supplying `rowCount` switches to manual mode and `rows` is treated as an already-sliced page — passing the *full* dataset with `rowCount` set will show everything on page one with no pagination. Omit `rowCount` for automatic mode. (As a guard, `DataGridServer()` warns if `nrow(rows)` exceeds `rowCount`.)
+- **Sorting or filtering resets to the first page.**
+- **Missing values always sort last**, regardless of sort direction.
+- **Row ids must be stable for selection.** When `rows` has no `id` column, ids are generated positionally (1..n of the *current* filtered/sorted result), so the same record gets a different id after a sort or filter change. If you use `checkboxSelection` with server-side data, include a stable, unique `id` column in `rows` so selections survive sorting and filtering.
 
 ## Custom columns
 
