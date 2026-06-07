@@ -1,0 +1,79 @@
+# Workflow derived from https://github.com/r-lib/actions/tree/v2/examples
+# Builds the pkgdown site and deploys it into the muiDataGrid/ subfolder of the
+# lgnbhl/lgnbhl.github.io user site, served at https://felixluginbuhl.com/muiDataGrid/
+# (= https://lgnbhl.github.io/muiDataGrid/).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+name: pkgdown.yaml
+
+permissions: read-all
+
+jobs:
+  pkgdown:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+        # persist-credentials: false stops checkout from leaving the
+        # github-actions[bot] GITHUB_TOKEN as a git auth header, which would
+        # otherwise hijack the cross-repo deploy push and cause a 403
+        # ("denied to github-actions[bot]") instead of using DEPLOY_PAT.
+        with:
+          persist-credentials: false
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::pkgdown, local::.
+          needs: website
+
+      - name: Build site
+        # new_process = FALSE keeps everything in one R session; install = FALSE
+        # is fine because the previous step already installed the package.
+        # NOTE: deliberately using build_site() rather than
+        # build_site_github_pages() to avoid auto-writing a CNAME from the
+        # `url:` in _pkgdown.yml; the site is deployed into a subfolder of the
+        # lgnbhl.github.io user site, whose own CNAME must not be touched
+        # (the deploy step also excludes CNAME for good measure).
+        run: pkgdown::build_site(new_process = FALSE, install = FALSE)
+        shell: Rscript {0}
+
+      - name: Detach HEAD to free the 'main' branch name for deploy
+        # The deploy action below creates a git worktree and checks out the
+        # target branch (main on lgnbhl.github.io). Git refuses because this
+        # runner's source checkout is also on a branch named 'main'. Detaching
+        # HEAD frees the name so the deploy worktree can use it.
+        if: github.event_name != 'pull_request'
+        run: git checkout --detach
+        shell: bash
+
+      - name: Deploy to user site repo
+        # Pushes the built site into the muiDataGrid/ subfolder of the
+        # lgnbhl/lgnbhl.github.io user site (served at felixluginbuhl.com/muiDataGrid,
+        # which is the canonical URL set in _pkgdown.yml).
+        # Cross-repo push needs a PAT (with contents:write on lgnbhl.github.io)
+        # stored as the DEPLOY_PAT secret -- the default GITHUB_TOKEN is
+        # scoped to this repo only and cannot write to another repo.
+        # clean is scoped to target-folder, so sibling project folders
+        # (muiMaterial, muiCharts, reactRouter, the Quarto site, ...) are left untouched.
+        if: github.event_name != 'pull_request'
+        uses: JamesIves/github-pages-deploy-action@v4.5.0
+        with:
+          token: ${{ secrets.DEPLOY_PAT }}
+          repository-name: lgnbhl/lgnbhl.github.io
+          branch: main
+          folder: docs
+          target-folder: muiDataGrid
+          clean: true
