@@ -17,7 +17,8 @@ LazyData: true
 Depends: R (>= 3.4)
 Imports:
     htmltools,
-    shiny.react (>= 0.4.0)
+    shiny.react (>= 0.4.0),
+    utils
 Suggests:
     knitr,
     rmarkdown,

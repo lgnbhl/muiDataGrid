@@ -8,7 +8,7 @@ muiDataGridDependency <- function() {
     muiMaterial::muiMaterialDependency(),
     htmltools::htmlDependency(
       name = "muiDataGrid",
-      version = "0.1.0",
+      version = as.character(utils::packageVersion("muiDataGrid")),
       package = "muiDataGrid",
       src = "www/muiDataGrid",
       script = "x-data-grid.js"
