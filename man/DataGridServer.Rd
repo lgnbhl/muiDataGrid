@@ -88,6 +88,12 @@ knowing about:
   \item When \code{rows} has no \code{id} column, ids are generated
     positionally and are \emph{not} stable across sort/filter changes.
     Supply a stable, unique \code{id} column if you use row selection.
+  \item \code{initialPageSize}, \code{initialState}, and any initial sort or
+    filter seed the grid \emph{only on the first render}. The React component
+    reads them once when it mounts, so changing them reactively afterwards
+    (e.g. from a \code{selectInput}) has no effect on the already-mounted
+    grid. To change page size after mount, drive it from the grid's own
+    controls rather than re-rendering with a new \code{initialPageSize}.
 }
 }
 

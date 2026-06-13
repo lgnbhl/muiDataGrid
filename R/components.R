@@ -186,10 +186,19 @@ processGridParams <- function(data, params, pageSize = 100L) {
   # MUI field names from input$<inputId>: page, pageSize, field, sort,
   # operator, value, items. Update here if MUI renames them between versions.
   # NULL$foo returns NULL in R, so these safely default when params is NULL.
-  page         <- params$pagination_model$page     %||% 0L
-  page_size    <- params$pagination_model$pageSize %||% pageSize
-  sort_items   <- params$sort_model                %||% list()
-  filter_items <- params$filter_model$items        %||% list()
+  page      <- params$pagination_model$page     %||% 0L
+  page_size <- params$pagination_model$pageSize %||% pageSize
+  .slice_page(.apply_sort_filter(data, params), page, page_size)
+}
+
+# Sorting + filtering + id injection: the expensive part of processGridParams,
+# extracted so DataGridServer()'s automatic mode can memoize it (see
+# .memoized_sort_filter). A pagination-only change re-renders the grid but does
+# not alter this result, so caching it avoids re-running order() over every row
+# on each page click.
+.apply_sort_filter <- function(data, params) {
+  sort_items   <- params$sort_model         %||% list()
+  filter_items <- params$filter_model$items %||% list()
 
   # Sorting — all items applied together to support multi-column sort.
   # Skip list-columns: xtfrm() (used below) errors on them, and they have no
@@ -266,10 +275,15 @@ processGridParams <- function(data, params, pageSize = 100L) {
       } else {
         tolower(as.character(col)) == tolower(f$value)
       },
-      ">" = col > suppressWarnings(as.numeric(f$value)),
-      ">=" = col >= suppressWarnings(as.numeric(f$value)),
-      "<" = col < suppressWarnings(as.numeric(f$value)),
-      "<=" = col <= suppressWarnings(as.numeric(f$value)),
+      # Numeric comparison for number columns; lexical character comparison
+      # otherwise. MUI only emits these for `number` columns, but guarding on
+      # is.numeric() (as `=`/`!=` above do) means a mistyped string column that
+      # somehow receives a number-style filter compares lexically instead of
+      # coercing the whole column to NA.
+      ">" = if (is.numeric(col)) col > suppressWarnings(as.numeric(f$value)) else as.character(col) > f$value,
+      ">=" = if (is.numeric(col)) col >= suppressWarnings(as.numeric(f$value)) else as.character(col) >= f$value,
+      "<" = if (is.numeric(col)) col < suppressWarnings(as.numeric(f$value)) else as.character(col) < f$value,
+      "<=" = if (is.numeric(col)) col <= suppressWarnings(as.numeric(f$value)) else as.character(col) <= f$value,
       "isAnyOf" = tolower(as.character(col)) %in% tolower(as.character(f$value)),
       # Coerce via character so date columns that reach R as strings (the default
       # when `type = "string"`) compare correctly, not just real Date columns.
@@ -296,14 +310,54 @@ processGridParams <- function(data, params, pageSize = 100L) {
   }
 
   # Inject stable IDs before slicing so they are consistent across pages
-  data <- .inject_id(data)
+  .inject_id(data)
+}
 
+# Slice a single page out of an already sorted/filtered frame: the cheap part of
+# processGridParams, kept separate so it can run on a memoized frame without
+# repeating the sort/filter (see .apply_sort_filter, .memoized_sort_filter).
+.slice_page <- function(data, page, page_size) {
   total_rows <- nrow(data)
   start <- page * page_size + 1
   end <- min(start + page_size - 1, total_rows)
   page_data <- if (start <= total_rows) data[start:end, ] else data[0, ]
   rownames(page_data) <- NULL
   list(rows = page_data, rowCount = total_rows)
+}
+
+# Memoize the sort/filter pass for DataGridServer()'s automatic mode. In auto
+# mode the user's full `rows` is re-processed on every render, and a page change
+# *is* a render — so without this, paging through a sorted 100k-row frame
+# re-runs order() over all rows on every click. Cache key: the sort and filter
+# models plus the source frame itself (compared with identical(), which is a
+# single linear pass versus the O(n log n) re-sort it avoids). Storing the
+# source and processed frames trades memory for speed; for very large data
+# prefer manual mode (pass rowCount) so R never holds the full frame.
+.memoized_sort_filter <- function(session, inputId, rows, params) {
+  sort_model   <- params$sort_model         %||% list()
+  filter_items <- params$filter_model$items %||% list()
+  # No sort and no filter: .apply_sort_filter is just .inject_id (cheap), so the
+  # cache lookup/store would cost more than it saves. Compute directly.
+  if (is.null(session) ||
+    (length(sort_model) == 0 && length(filter_items) == 0)) {
+    return(.apply_sort_filter(rows, params))
+  }
+  filter_model <- params$filter_model %||% list(items = list())
+  cache <- session$userData$.datagrid_sortfilter_cache %||% list()
+  entry <- cache[[inputId]]
+  if (!is.null(entry) &&
+    identical(entry$sort, sort_model) &&
+    identical(entry$filter, filter_model) &&
+    identical(entry$source, rows)) {
+    return(entry$processed)
+  }
+  processed <- .apply_sort_filter(rows, params)
+  cache[[inputId]] <- list(
+    sort = sort_model, filter = filter_model,
+    source = rows, processed = processed
+  )
+  session$userData$.datagrid_sortfilter_cache <- cache
+  processed
 }
 
 #' Server-Side DataGrid
@@ -335,6 +389,12 @@ processGridParams <- function(data, params, pageSize = 100L) {
 #'   \item When \code{rows} has no \code{id} column, ids are generated
 #'     positionally and are \emph{not} stable across sort/filter changes.
 #'     Supply a stable, unique \code{id} column if you use row selection.
+#'   \item \code{initialPageSize}, \code{initialState}, and any initial sort or
+#'     filter seed the grid \emph{only on the first render}. The React component
+#'     reads them once when it mounts, so changing them reactively afterwards
+#'     (e.g. from a \code{selectInput}) has no effect on the already-mounted
+#'     grid. To change page size after mount, drive it from the grid's own
+#'     controls rather than re-rendering with a new \code{initialPageSize}.
 #' }
 #'
 #' @param inputId Character. The Shiny input ID. When pagination, sorting, or
@@ -466,12 +526,17 @@ DataGridServer <- function(
       call. = FALSE
     )
   }
-  # Automatic mode: rowCount not supplied, so run processGridParams internally.
+  # Automatic mode: rowCount not supplied, so sort/filter/paginate internally.
+  # The sort/filter pass is memoized per (session, inputId) so a pagination-only
+  # change re-slices a cached frame instead of re-sorting the whole dataset.
   if (is.null(rowCount) && !is.null(rows)) {
     params <- if (!is.null(session)) session$input[[inputId]] else NULL
-    page_size <- if (!is.null(initialPageSize)) as.integer(initialPageSize) else 100L
-    result <- processGridParams(rows, params, pageSize = page_size)
-    rows <- result$rows
+    default_size <- if (!is.null(initialPageSize)) as.integer(initialPageSize) else 100L
+    page      <- params$pagination_model$page     %||% 0L
+    page_size <- params$pagination_model$pageSize %||% default_size
+    processed <- .memoized_sort_filter(session, inputId, rows, params)
+    result   <- .slice_page(processed, page, page_size)
+    rows     <- result$rows
     rowCount <- result$rowCount
   }
   if (is.null(columns) && !is.null(rows)) {

@@ -760,3 +760,48 @@ test_that("logicOperator defaults to AND when explicitly NULL", {
   result <- processGridParams(df, params)
   expect_equal(result$rowCount, 5)
 })
+
+# --- Memoization of the sort/filter pass (.memoized_sort_filter) ---
+
+test_that(".memoized_sort_filter caches and reuses the sorted/filtered frame", {
+  session <- shiny::MockShinySession$new()
+  params <- list(
+    sort_model = list(list(field = "value", sort = "desc")),
+    filter_model = list(items = list())
+  )
+  first <- muiDataGrid:::.memoized_sort_filter(session, "grid", df, params)
+  # Frame is cached under the inputId.
+  cache <- session$userData$.datagrid_sortfilter_cache
+  expect_false(is.null(cache[["grid"]]))
+  # Poison the cached frame: a second call with the same sort/filter/source must
+  # return the cached (poisoned) value, proving it did not recompute.
+  sentinel <- data.frame(id = -1L, marker = "cached")
+  session$userData$.datagrid_sortfilter_cache[["grid"]]$processed <- sentinel
+  second <- muiDataGrid:::.memoized_sort_filter(session, "grid", df, params)
+  expect_identical(second, sentinel)
+  # The frame itself is correct (descending by value).
+  expect_equal(first$value, 20:1)
+})
+
+test_that(".memoized_sort_filter recomputes when sort/filter changes", {
+  session <- shiny::MockShinySession$new()
+  asc  <- list(sort_model = list(list(field = "value", sort = "asc")),
+               filter_model = list(items = list()))
+  desc <- list(sort_model = list(list(field = "value", sort = "desc")),
+               filter_model = list(items = list()))
+  muiDataGrid:::.memoized_sort_filter(session, "grid", df, asc)
+  session$userData$.datagrid_sortfilter_cache[["grid"]]$processed <-
+    data.frame(id = -1L)
+  # Different sort model invalidates the cache, so the poisoned frame is ignored.
+  out <- muiDataGrid:::.memoized_sort_filter(session, "grid", df, desc)
+  expect_equal(out$value, 20:1)
+})
+
+test_that(".memoized_sort_filter skips the cache when nothing to sort/filter", {
+  session <- shiny::MockShinySession$new()
+  params <- list(sort_model = list(), filter_model = list(items = list()))
+  out <- muiDataGrid:::.memoized_sort_filter(session, "grid", df, params)
+  expect_equal(out$id, df$id)
+  # No cache entry is created for the trivial (no sort/filter) case.
+  expect_null(session$userData$.datagrid_sortfilter_cache)
+})
