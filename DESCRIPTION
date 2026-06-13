@@ -18,11 +18,11 @@ Depends: R (>= 3.4)
 Imports:
     htmltools,
     shiny.react (>= 0.4.0),
+    muiMaterial (>= 0.2.0),
     utils
 Suggests:
     knitr,
     rmarkdown,
-    muiMaterial,
     shiny,
     dplyr,
     testthat (>= 3.0.0)
