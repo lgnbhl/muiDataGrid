@@ -26,6 +26,8 @@ library(dplyr)
 
 Column definitions in the Data Grid specify how data is displayed, formatted, and interacted with. Each column has a unique field name and various properties that control its behavior.
 
+> **Free tier only.** `muiDataGrid` wraps the open-source **MUI X Data Grid (Community)** component. Only Community-tier features are available. Properties that belong to the commercial **Pro** or **Premium** tiers — such as column pinning (`pinnable`), row grouping, aggregation, the tree-data and master-detail layouts, and Excel export — are not bundled and will have no effect if you pass them. See the [MUI X feature comparison](https://mui.com/x/introduction/licensing/#plan-features) for which features belong to which plan.
+
 ## Core Properties
 
 ### field
@@ -515,7 +517,6 @@ DataGrid(
       sortable = TRUE,
       filterable = TRUE,
       hideable = FALSE,
-      pinnable = TRUE,
       align = "left"
     ),
     list(

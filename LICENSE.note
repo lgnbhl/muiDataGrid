@@ -1,0 +1,44 @@
+The muiDataGrid R package is released under the MIT License
+(see the LICENSE and LICENSE.md files).
+
+The package bundles a pre-built JavaScript file
+('inst/www/muiDataGrid/x-data-grid.js') that includes minified
+third-party code. The third-party libraries below are all
+distributed under the MIT License and their copyright notices
+and license texts are preserved in:
+
+    inst/www/muiDataGrid/x-data-grid.js.LICENSE.txt
+
+Bundled third-party libraries
+-----------------------------
+
+  Library                         Copyright holder
+  ------------------------------  -----------------------------
+  @mui/x-data-grid                Copyright (c) MUI
+  @mui/x-virtualizer              Copyright (c) MUI
+  @mui/x-internals                Copyright (c) MUI
+  @mui/private-theming            Copyright (c) MUI
+  @mui/styled-engine              Copyright (c) MUI
+  react-is                        Copyright (c) Meta Platforms, Inc. and affiliates
+
+The 'react', 'react-dom', '@mui/material', '@mui/system',
+'@mui/utils', '@emotion/react' and '@emotion/styled' libraries are
+declared as external dependencies of the bundled JavaScript and are
+provided at runtime by 'shiny.react' and 'muiMaterial'; they are not
+themselves redistributed inside this package. The 'react-is',
+'@mui/x-internals', '@mui/private-theming' and '@mui/styled-engine'
+helpers are bundled into 'x-data-grid.js' as transitive dependencies
+of '@mui/x-data-grid'.
+
+Trademark notice
+----------------
+
+"MUI", "Material UI" and "MUI X" are trademarks of MUI Inc.
+The muiDataGrid R package is an independent, community-maintained
+wrapper and is not affiliated with, sponsored by, or endorsed by
+MUI Inc. Use of the "MUI" and "MUI X" names is solely to identify
+the third-party JavaScript library that this package wraps. The
+package bundles only the MIT-licensed community 'MUI X Data Grid'
+('@mui/x-data-grid'); the commercial 'Pro' and 'Premium' tiers are
+not included. See https://mui.com/legal/ for MUI's published legal
+information.

@@ -1,5 +1,6 @@
 const webpack = require('webpack');
 const path = require('path');
+const { LicenseWebpackPlugin } = require('license-webpack-plugin');
 
 const config = {
   entry: './src/index.js',
@@ -38,7 +39,35 @@ const config = {
     '@emotion/react': 'jsmodule["@emotion/react"]',
     '@emotion/styled': '(jsmodule["@emotion/styled"].default || jsmodule["@emotion/styled"])'
   },
-  plugins: [new webpack.DefinePlugin({ 'process.env': '{}' })],
+  plugins: [
+    new webpack.DefinePlugin({ 'process.env': '{}' }),
+    new LicenseWebpackPlugin({
+      outputFilename: 'x-data-grid.js.LICENSE.txt',
+      // Only the 'MUI X Data Grid' family is bundled into x-data-grid.js. The
+      // runtime externals below (react, react-dom, @mui/material, @mui/system,
+      // @mui/utils, @emotion/*) are provided by 'shiny.react' and 'muiMaterial'
+      // and are not redistributed, so their declared transitive deps (e.g.
+      // react-transition-group) are excluded from the attribution file.
+      excludedPackageTest: (name) =>
+        [
+          'react',
+          'react-dom',
+          'react-transition-group',
+          '@mui/material',
+          '@mui/system',
+          '@mui/utils',
+          '@emotion/react',
+          '@emotion/styled',
+        ].includes(name),
+      additionalModules: [
+        { name: '@mui/x-data-grid', directory: path.resolve(__dirname, 'node_modules/@mui/x-data-grid') },
+        { name: '@mui/x-virtualizer', directory: path.resolve(__dirname, 'node_modules/@mui/x-virtualizer') },
+        { name: '@mui/x-internals', directory: path.resolve(__dirname, 'node_modules/@mui/x-internals') },
+        { name: '@mui/private-theming', directory: path.resolve(__dirname, 'node_modules/@mui/private-theming') },
+        { name: '@mui/styled-engine', directory: path.resolve(__dirname, 'node_modules/@mui/styled-engine') },
+      ],
+    }),
+  ],
 };
 
 module.exports = config;
