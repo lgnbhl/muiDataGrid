@@ -83,6 +83,7 @@ library(dplyr)
 
 DataGrid(
   rows = starwars |> select(name, height, mass) |> head(10),
+  pageSizeOptions = c(5, 10, 25),
   initialState = list(
     pagination = list(
       paginationModel = list(pageSize = 5)
@@ -90,3 +91,19 @@ DataGrid(
   )
 )
 ```
+
+## Toolbar and CSV export
+
+Set `showToolbar = TRUE` to display the toolbar, which includes column,
+filter, density, and export controls. The **Export** button can download the
+current data as a CSV file.
+
+```{r}
+DataGrid(
+  rows = starwars |> select(name, height, mass) |> head(10),
+  showToolbar = TRUE
+)
+```
+
+See the Localization vignette to fix accented characters (`ä` becomes
+`Ã¤`, `è` becomes `Ã¨`) in CSV exports for Excel.

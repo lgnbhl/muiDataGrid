@@ -34,6 +34,8 @@ navbar:
       href: articles/row-spanning.html
     - text: Styling basics
       href: articles/styling-basics.html
+    - text: Localization
+      href: articles/localization.html
     - text: Custom with React JS
       href: articles/custom-react-js.html
   - text: R Shiny

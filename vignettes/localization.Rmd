@@ -1,0 +1,210 @@
+---
+title: "Localization"
+format:
+  html:
+    minimal: true
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Localization}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r message=FALSE, warning=FALSE}
+library(muiDataGrid)
+library(dplyr)
+```
+
+# Localization
+
+Localizing a grid involves two **independent** concerns:
+
+1. **UI text** — the labels of the component itself ("Rows per page", column menu items, filter operators, …). Controlled by the `localeText` prop.
+2. **Value formatting** — how the *data* in the cells is formatted (thousands separators, decimal marks, dates). Controlled per column with `valueFormatter`.
+
+They are separate axes: you can show German UI text while formatting numbers the Swiss way, or vice versa. This article covers both.
+
+## Translating the UI text with `localeText`
+
+MUI X Data Grid ships ready-made translations for many languages. `muiDataGrid` bundles them, so you can point `localeText` at a locale object using the same path documented for the [React component](https://mui.com/x/react-data-grid/localization/):
+
+```{r eval=FALSE}
+DataGrid(
+  rows = head(iris),
+  localeText = JS(
+    "window.jsmodule['@mui/x-data-grid/locales'].deDE.components.MuiDataGrid.defaultProps.localeText"
+  )
+)
+```
+
+This translates the whole grid — pagination ("Zeilen pro Seite:"), column menus, filter panel, export menu and selection footer — in one shot.
+
+The reference is a 1:1 mirror of the React idiom
+`localeText={deDE.components.MuiDataGrid.defaultProps.localeText}`. To use another
+language, swap `deDE` for any other bundled locale code, for example `frFR` or `itIT`:
+
+```{r eval=FALSE}
+# French UI
+DataGrid(
+  rows = head(iris),
+  localeText = JS(
+    "window.jsmodule['@mui/x-data-grid/locales'].frFR.components.MuiDataGrid.defaultProps.localeText"
+  )
+)
+```
+
+### Available locale codes
+
+MUI X provides the following codes. There are **no regional variants** (e.g. no
+`deCH` for Swiss German) — `localeText` controls *wording* only, and the wording is
+identical across regions. Regional differences are a matter of *value formatting*
+(see below).
+
+```
+arSD beBY bgBG bnBD caES csCZ daDK deDE elGR enUS esES faIR fiFI frFR
+heIL hrHR huHU hyAM idID isIS itIT jaJP koKR nbNO nlNL nnNO plPL ptBR
+ptPT roRO ruRU skSK svSE thTH trTR ukUA urPK viVN zhCN zhHK zhTW
+```
+
+For Switzerland, use the base-language code: `deDE` (Swiss German), `frFR`
+(Romandy) or `itIT` (Ticino).
+
+### Translating only a few labels
+
+If you only want to override a handful of strings, pass `localeText` as a named
+list instead. "Rows per page" lives under the nested `MuiTablePagination` key:
+
+```{r eval=FALSE}
+DataGrid(
+  rows = head(iris),
+  localeText = list(
+    MuiTablePagination = list(labelRowsPerPage = "Zeilen pro Seite:"),
+    columnMenuSortAsc  = "Aufsteigend sortieren",
+    columnMenuSortDesc = "Absteigend sortieren",
+    columnMenuFilter   = "Filtern",
+    toolbarExport      = "Exportieren"
+  )
+)
+```
+
+## Formatting numbers per locale
+
+When a column has `type = "number"`, the value is formatted in a locale-aware way.
+In German that means a thousands separator — rendered as a narrow space — so `2005`
+appears as `2 005`. For identifiers such as years you usually want to suppress this.
+
+Use a `valueFormatter` with `Intl.NumberFormat` and `useGrouping: false`:
+
+```{r}
+DataGrid(
+  rows = data.frame(country = c("CH", "DE", "FR"), year = c(2005L, 1990L, 2021L)),
+  columns = list(
+    list(field = "country", headerName = "Country", width = 120),
+    list(
+      field = "year",
+      headerName = "Year",
+      type = "number",
+      width = 120,
+      valueFormatter = JS(
+        "function(v){ return v == null ? '' : v.toLocaleString('de-DE', { useGrouping: false }); }"
+      )
+    )
+  )
+)
+```
+
+> The CSV/Excel export uses the **formatted** value, so a `valueFormatter` fixes both
+> the on-screen cell *and* the downloaded file in one place — there is no need for
+> separate export configuration.
+
+Alternatively, if the number is purely a label that you never sort or filter
+numerically, declaring it `type = "string"` avoids all numeric formatting.
+
+### Swiss formatting
+
+Unlike `localeText`, the `Intl` locale passed to `valueFormatter` **does** support
+regional variants. Use `de-CH` for the Swiss separator (`1'000`):
+
+```{r}
+DataGrid(
+  rows = data.frame(city = c("Zürich", "Genève"), population = c(421878L, 203856L)),
+  columns = list(
+    list(field = "city", headerName = "City", width = 140),
+    list(
+      field = "population",
+      headerName = "Population",
+      type = "number",
+      width = 160,
+      valueFormatter = JS(
+        "function(v){ return v == null ? '' : v.toLocaleString('de-CH'); }"
+      )
+    )
+  )
+)
+```
+
+## Combining: a fully Swiss grid
+
+German UI text (`deDE`) with Swiss number formatting (`de-CH`):
+
+```{r eval=FALSE}
+DataGrid(
+  rows = data.frame(city = c("Zürich", "Genève"), population = c(421878L, 203856L)),
+  columns = list(
+    list(field = "city", headerName = "Stadt", width = 140),
+    list(
+      field = "population",
+      headerName = "Einwohner",
+      type = "number",
+      width = 160,
+      valueFormatter = JS(
+        "function(v){ return v == null ? '' : v.toLocaleString('de-CH'); }"
+      )
+    )
+  ),
+  localeText = JS(
+    "window.jsmodule['@mui/x-data-grid/locales'].deDE.components.MuiDataGrid.defaultProps.localeText"
+  )
+)
+```
+
+### Fixing accented characters in CSV exports
+
+By default, MUI X writes the CSV as UTF-8 **without** a byte-order mark (BOM).
+Some spreadsheet applications — notably Excel on Windows — then assume a legacy
+encoding (Windows-1252) and mangle accented characters: `ä` becomes
+`Ã¤`, `è` becomes `Ã¨`, and so on. The exported file is
+actually correct UTF-8; only the application's encoding guess is wrong.
+
+To fix this, prepend a UTF-8 BOM by setting `utf8WithBom = TRUE` in the
+toolbar's `csvOptions`, which signals the encoding to the spreadsheet
+application:
+
+```{r}
+DataGrid(
+  rows = data.frame(
+    city = c("Altstätten", "Genève", "Zürich"),
+    canton = c("St. Gallen", "Genève", "Zürich")
+  ),
+  showToolbar = TRUE,
+  slotProps = list(
+    toolbar = list(
+      csvOptions = list(utf8WithBom = TRUE)
+    )
+  )
+)
+```
+
+The same `csvOptions` list accepts a `delimiter` — German and French versions
+of Excel expect a semicolon rather than a comma, so `delimiter = ";"` can
+further improve compatibility. These options apply to both `DataGrid()` and
+`DataGridServer()`, since extra props are passed straight through to the
+underlying grid.
+
