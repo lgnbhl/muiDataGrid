@@ -18,11 +18,22 @@ const config = {
         use: ['babel-loader'],
       },
       {
+        // MUI now ships .mjs (strict ESM) files that use extension-less imports
+        // (e.g. react-transition-group/TransitionGroupContext). webpack 5 treats
+        // .mjs as fully specified and refuses to resolve them; relax that here.
+        test: /\.m?js$/,
+        resolve: { fullySpecified: false },
+      },
+      {
         test: /\.css$/,
         use: ['style-loader', 'css-loader'],
       },
     ],
   },
+  // The Data Grid is bundled as a single Shiny dependency and is inherently
+  // large (~2 MiB); it cannot be code-split here, so disable the size budget
+  // warnings rather than chase an unachievable limit.
+  performance: { hints: false },
   externals: {
     'react': 'jsmodule["react"]',
     'react-dom': 'jsmodule["react-dom"]',
