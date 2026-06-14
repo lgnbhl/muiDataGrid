@@ -685,6 +685,43 @@ test_that("filters with onOrBefore operator", {
   expect_true(all(result$rows$date <= as.Date("2024-06-15")))
 })
 
+test_that("date filter with an unparseable column value fails soft, not error", {
+  # A non-date string in the column (or filter value) must not abort the render:
+  # base as.Date() would error on the whole vector; .as_date() yields NA, which
+  # the keep[is.na] step drops.
+  df_mixed <- data.frame(
+    id = 1:3,
+    date = c("2024-01-01", "not a date", "2025-01-01"),
+    stringsAsFactors = FALSE
+  )
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(items = list(
+      list(field = "date", operator = "after", value = "2024-06-01")
+    ))
+  )
+  expect_silent(result <- processGridParams(df_mixed, params))
+  expect_equal(result$rowCount, 1)
+  expect_equal(result$rows$date, "2025-01-01")
+})
+
+test_that("date filter with an unparseable filter value matches no rows", {
+  df_dates <- data.frame(
+    id = 1:2,
+    date = as.Date(c("2024-01-01", "2025-01-01"))
+  )
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(items = list(
+      list(field = "date", operator = "after", value = "garbage")
+    ))
+  )
+  expect_silent(result <- processGridParams(df_dates, params))
+  expect_equal(result$rowCount, 0)
+})
+
 test_that("date operators work on character (string-typed) date columns", {
   # Dates default to type = "string" and can reach R as character strings;
   # the operator should still compare them chronologically.

@@ -22,6 +22,11 @@ returns a JS \code{Date} explicitly.}
 
 \item{...}{Additional props passed directly to the MUI DataGrid component.}
 }
+\value{
+A \code{shiny.react} element (also classed \code{muiDataGrid}) that
+  renders the MUI X Data Grid. Use it directly in Shiny UI, inside
+  \code{renderReact()}, or in a Quarto/R Markdown document.
+}
 \description{
 DataGrid
 }

@@ -2,7 +2,6 @@ url: https://felixluginbuhl.com/muiDataGrid
 template:
   bootstrap: 5
   bootswatch: litera
-  ganalytics: UA-158089797-1
   bslib:
     primary: "#3399ff"
 

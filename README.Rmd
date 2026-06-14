@@ -32,9 +32,10 @@ reactVersion <- pkg$devDependencies[["react"]]
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Follow-E4405F?style=social&logo=linkedin)](https://www.linkedin.com/in/FelixLuginbuhl)
 <!-- badges: end -->
 
-**muiDataGrid** gives access to [MUI X Data Grid](https://mui.com/x/react-data-grid/), a fast and extensible React data table and React data grid, with filtering, sorting, aggregation, and more.
+**muiDataGrid** gives access to [MUI X Data Grid](https://mui.com/x/react-data-grid/), a fast and extensible React data table and React data grid, with filtering, sorting, pagination, and more.
 
 ## Install
+
 
 ``` r
 install.packages("muiDataGrid")

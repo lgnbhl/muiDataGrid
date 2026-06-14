@@ -15,7 +15,7 @@ status](https://www.r-pkg.org/badges/version/muiDataGrid)](https://CRAN.R-projec
 
 **muiDataGrid** gives access to [MUI X Data
 Grid](https://mui.com/x/react-data-grid/), a fast and extensible React
-data table and React data grid, with filtering, sorting, aggregation,
+data table and React data grid, with filtering, sorting, pagination,
 and more.
 
 ## Install

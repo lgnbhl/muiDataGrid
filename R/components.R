@@ -1,5 +1,18 @@
 `%||%` <- function(x, y) if (is.null(x)) y else x
 
+# Parse to Date, returning NA for any value that is not an unambiguous date
+# instead of erroring. base as.Date() throws on the whole vector if a single
+# element is unparseable (e.g. "Row 1" or ""), which would abort a render; this
+# coerces element-wise so date filters fail soft like the numeric ones.
+.as_date <- function(x) {
+  x <- as.character(x)
+  out <- as.Date(rep(NA_real_, length(x)), origin = "1970-01-01")
+  for (i in seq_along(x)) {
+    out[i] <- tryCatch(as.Date(x[i]), error = function(e) as.Date(NA))
+  }
+  out
+}
+
 # Inject a stable integer id column if one is not already present. When the
 # caller supplies their own id, warn on duplicates: MUI X Data Grid requires
 # unique row ids and otherwise hard-errors in the browser ("all rows must have
@@ -116,6 +129,10 @@
 #'   filtering, set \code{type = "date"} together with a \code{valueGetter} that
 #'   returns a JS \code{Date} explicitly.
 #' @param ... Additional props passed directly to the MUI DataGrid component.
+#'
+#' @return A \code{shiny.react} element (also classed \code{muiDataGrid}) that
+#'   renders the MUI X Data Grid. Use it directly in Shiny UI, inside
+#'   \code{renderReact()}, or in a Quarto/R Markdown document.
 #'
 #' @rdname DataGrid
 #' @export
@@ -287,11 +304,13 @@ processGridParams <- function(data, params, pageSize = 100L) {
       "isAnyOf" = tolower(as.character(col)) %in% tolower(as.character(f$value)),
       # Coerce via character so date columns that reach R as strings (the default
       # when `type = "string"`) compare correctly, not just real Date columns.
-      # Unparseable strings become NA and are dropped by the keep[is.na] step.
-      "after" = as.Date(as.character(col)) > as.Date(f$value),
-      "onOrAfter" = as.Date(as.character(col)) >= as.Date(f$value),
-      "before" = as.Date(as.character(col)) < as.Date(f$value),
-      "onOrBefore" = as.Date(as.character(col)) <= as.Date(f$value),
+      # .as_date() returns NA for unparseable values (column *or* filter value)
+      # instead of erroring, so a stray non-date fails soft (dropped by the
+      # keep[is.na] step) rather than aborting the whole render.
+      "after" = .as_date(col) > .as_date(f$value),
+      "onOrAfter" = .as_date(col) >= .as_date(f$value),
+      "before" = .as_date(col) < .as_date(f$value),
+      "onOrBefore" = .as_date(col) <= .as_date(f$value),
       "isEmpty" = is.na(col) | as.character(col) == "",
       "isNotEmpty" = !is.na(col) & as.character(col) != "",
       rep(TRUE, nrow(data))
