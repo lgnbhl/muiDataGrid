@@ -73,7 +73,7 @@
     # Infer for every column lacking an explicit type. Treat a missing `type`
     # column, NA, and "" all as "untyped" so a *partial* type column (some rows
     # set, others NA) still gets the unset rows inferred — matching the
-    # per-column behaviour of the list form below. Explicit types are kept.
+    # per-column behavior of the list form below. Explicit types are kept.
     type <- if ("type" %in% names(columns)) as.character(columns$type) else rep(NA_character_, nrow(columns))
     needs <- is.na(type) | type == ""
     if (any(needs)) {
@@ -179,11 +179,11 @@ DataGrid <- function(rows = NULL, columns = NULL, ...) {
 #' \strong{Experimental.} This helper is \emph{specific to this R package} and
 #' has no equivalent in MUI X Data Grid, which leaves the server-side data
 #' layer entirely to the developer. It reimplements MUI's server-mode
-#' filtering and sorting semantics in R, so its behaviour may change between
+#' filtering and sorting semantics in R, so its behavior may change between
 #' releases and can differ in edge cases from MUI's own client-side filtering.
 #' Decisions worth knowing about: string filters are case-insensitive (except
 #' \code{is}, which is case-sensitive), missing values always sort last, and
-#' unrecognised filter operators pass all rows through \emph{with a warning}.
+#' unrecognized filter operators pass all rows through \emph{with a warning}.
 #'
 #' @param data A data.frame with all rows.
 #' @param params The grid params list from \code{input$<inputId>}, or NULL
@@ -412,14 +412,14 @@ processGridParams <- function(data, params, pageSize = 100L) {
 #' (\code{paginationMode = "server"} plus callbacks) and leaves the data layer
 #' to you. This wrapper supplies that layer in R, and in doing so encodes a
 #' number of opinionated decisions that may change in future releases. Pin the
-#' package version if you rely on the current behaviour. Decisions worth
+#' package version if you rely on the current behavior. Decisions worth
 #' knowing about:
 #' \itemize{
 #'   \item Mode is selected by the presence of \code{rowCount}: supply it to
 #'     pass a pre-sliced page (manual mode); omit it to let the full
 #'     \code{rows} be paginated automatically.
 #'   \item Changing the sort or any filter resets the grid to the first page.
-#'   \item Unrecognised filter operators pass all rows through with a warning
+#'   \item Unrecognized filter operators pass all rows through with a warning
 #'     (see \code{\link{processGridParams}}).
 #'   \item When \code{rows} has no \code{id} column, ids are generated
 #'     positionally and are \emph{not} stable across sort/filter changes.

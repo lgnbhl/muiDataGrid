@@ -25,7 +25,7 @@ knitr::opts_chunk$set(
 > server-side data layer to the developer; this package supplies that layer in R.
 > As a result these two functions are **experimental** and encode a number of
 > opinionated decisions (described below) that may change in future releases. If
-> you depend on the current behaviour, pin the package version. The client-side
+> you depend on the current behavior, pin the package version. The client-side
 > `DataGrid()` is a thin wrapper over the real MUI component and is **not**
 > experimental.
 
@@ -155,7 +155,7 @@ Unrecognized operators pass all rows through (no filtering) **and emit a warning
 
 > **Note:** String operators (`contains`, `equals`, `startsWith`, `endsWith`, `not`) are case-insensitive. The `is` operator is case-sensitive, matching MUI's default behavior. Because filtering is reimplemented in R, edge cases (locale, accents) can differ from MUI's own client-side filter.
 
-## Opinionated behaviour to be aware of
+## Opinionated behavior to be aware of
 
 Because this server-side layer is bespoke (see the experimental note at the top), it makes a few decisions for you. Knowing them avoids surprises:
 

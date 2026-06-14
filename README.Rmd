@@ -87,4 +87,4 @@ DataGrid(
 
 If you have any issue, question or want to contribute with a pull request, don't hesitate to write me on https://felixluginbuhl.com/muiDataGrid/
 
-For updates follow [Felix Luginbuhl](https://linkedin.com/in/FelixLuginbuhl) on LinkedIn.
+For updates follow [Felix Luginbuhl](https://www.linkedin.com/in/FelixLuginbuhl) on LinkedIn.

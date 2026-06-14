@@ -76,14 +76,14 @@ no equivalent in MUI X Data Grid: MUI ships only the building blocks
 (\code{paginationMode = "server"} plus callbacks) and leaves the data layer
 to you. This wrapper supplies that layer in R, and in doing so encodes a
 number of opinionated decisions that may change in future releases. Pin the
-package version if you rely on the current behaviour. Decisions worth
+package version if you rely on the current behavior. Decisions worth
 knowing about:
 \itemize{
   \item Mode is selected by the presence of \code{rowCount}: supply it to
     pass a pre-sliced page (manual mode); omit it to let the full
     \code{rows} be paginated automatically.
   \item Changing the sort or any filter resets the grid to the first page.
-  \item Unrecognised filter operators pass all rows through with a warning
+  \item Unrecognized filter operators pass all rows through with a warning
     (see \code{\link{processGridParams}}).
   \item When \code{rows} has no \code{id} column, ids are generated
     positionally and are \emph{not} stable across sort/filter changes.

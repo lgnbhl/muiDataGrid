@@ -24,7 +24,7 @@ library(dplyr)
 
 # Custom with React JS
 
-## Custom columns using Javascript
+## Custom columns using JavaScript
 
 Using `valueGetter` or `valueFormatter`:
 

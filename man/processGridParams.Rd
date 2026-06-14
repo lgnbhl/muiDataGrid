@@ -31,11 +31,11 @@ parameters to a data.frame. Use inside \code{renderReact()} with
 \strong{Experimental.} This helper is \emph{specific to this R package} and
 has no equivalent in MUI X Data Grid, which leaves the server-side data
 layer entirely to the developer. It reimplements MUI's server-mode
-filtering and sorting semantics in R, so its behaviour may change between
+filtering and sorting semantics in R, so its behavior may change between
 releases and can differ in edge cases from MUI's own client-side filtering.
 Decisions worth knowing about: string filters are case-insensitive (except
 \code{is}, which is case-sensitive), missing values always sort last, and
-unrecognised filter operators pass all rows through \emph{with a warning}.
+unrecognized filter operators pass all rows through \emph{with a warning}.
 }
 
 \examples{

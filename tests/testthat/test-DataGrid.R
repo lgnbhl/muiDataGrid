@@ -83,7 +83,7 @@ test_that("DataGrid fills missing type in explicit data.frame columns", {
 test_that("DataGrid fills only the unset rows of a partial data.frame type column", {
   df <- data.frame(name = "Luke", height = 172, mass = 77)
   # height carries an explicit (forced) type; name and mass are left NA and
-  # should be inferred — matching the per-column behaviour of the list form.
+  # should be inferred — matching the per-column behavior of the list form.
   cols <- data.frame(
     field = c("name", "height", "mass"),
     type = c(NA, "string", NA),

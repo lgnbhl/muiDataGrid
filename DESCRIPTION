@@ -23,6 +23,7 @@ Description:
   'Premium' tiers are not included).
 License: MIT + file LICENSE
 Encoding: UTF-8
+Language: en-US
 Depends: R (>= 3.4)
 Imports:
     htmltools,
