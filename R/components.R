@@ -134,6 +134,22 @@
 #'   renders the MUI X Data Grid. Use it directly in Shiny UI, inside
 #'   \code{renderReact()}, or in a Quarto/R Markdown document.
 #'
+#' @examples
+#' # Minimal: column definitions are auto-generated from the data frame.
+#' DataGrid(rows = head(iris))
+#'
+#' # Custom columns plus an initial page size of 5 rows.
+#' DataGrid(
+#'   rows = head(mtcars),
+#'   columns = list(
+#'     list(field = "mpg", headerName = "MPG"),
+#'     list(field = "cyl", headerName = "Cylinders")
+#'   ),
+#'   initialState = list(
+#'     pagination = list(paginationModel = list(pageSize = 5))
+#'   )
+#' )
+#'
 #' @rdname DataGrid
 #' @export
 DataGrid <- function(rows = NULL, columns = NULL, ...) {

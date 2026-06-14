@@ -20,3 +20,9 @@ Invisibly returns x.
 When called interactively, renders the component in the IDE viewer panel.
 Otherwise, falls back to standard shiny.tag printing (raw HTML text).
 }
+\examples{
+grid <- DataGrid(rows = head(iris))
+# browse = FALSE prints the underlying HTML instead of opening the viewer.
+print(grid, browse = FALSE)
+
+}

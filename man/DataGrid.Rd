@@ -30,3 +30,20 @@ A \code{shiny.react} element (also classed \code{muiDataGrid}) that
 \description{
 DataGrid
 }
+\examples{
+# Minimal: column definitions are auto-generated from the data frame.
+DataGrid(rows = head(iris))
+
+# Custom columns plus an initial page size of 5 rows.
+DataGrid(
+  rows = head(mtcars),
+  columns = list(
+    list(field = "mpg", headerName = "MPG"),
+    list(field = "cyl", headerName = "Cylinders")
+  ),
+  initialState = list(
+    pagination = list(paginationModel = list(pageSize = 5))
+  )
+)
+
+}

@@ -8,6 +8,11 @@
 #' @param ... Additional arguments passed to print.
 #' @return Invisibly returns x.
 #'
+#' @examples
+#' grid <- DataGrid(rows = head(iris))
+#' # browse = FALSE prints the underlying HTML instead of opening the viewer.
+#' print(grid, browse = FALSE)
+#'
 #' @export
 print.muiDataGrid <- function(x, browse = interactive(), ...) {
   if (browse) {

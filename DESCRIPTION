@@ -16,7 +16,7 @@ Authors@R:
            comment = "Copyright holder of the bundled 'react-is' JavaScript library; 'react' and 'react-dom' are declared as peer dependencies and provided at runtime by 'shiny.react'"))
 Maintainer: Felix Luginbuhl <felix.luginbuhl@protonmail.ch>
 Description:
-  Give access to 'MUI X Data Grid', a fast and extensible React
+  Provides access to 'MUI X Data Grid', a fast and extensible React
   data table and React data grid, with filtering, sorting, pagination,
   and more.
 License: MIT + file LICENSE
