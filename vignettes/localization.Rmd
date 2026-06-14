@@ -35,7 +35,7 @@ They are separate axes: you can show German UI text while formatting numbers the
 
 MUI X Data Grid ships ready-made translations for many languages. `muiDataGrid` bundles them, so you can point `localeText` at a locale object using the same path documented for the [React component](https://mui.com/x/react-data-grid/localization/):
 
-```{r eval=FALSE}
+```{r}
 DataGrid(
   rows = head(iris),
   localeText = JS(
@@ -50,7 +50,7 @@ The reference is a 1:1 mirror of the React idiom
 `localeText={deDE.components.MuiDataGrid.defaultProps.localeText}`. To use another
 language, swap `deDE` for any other bundled locale code, for example `frFR` or `itIT`:
 
-```{r eval=FALSE}
+```{r}
 # French UI
 DataGrid(
   rows = head(iris),
@@ -81,7 +81,7 @@ For Switzerland, use the base-language code: `deDE` (Swiss German), `frFR`
 If you only want to override a handful of strings, pass `localeText` as a named
 list instead. "Rows per page" lives under the nested `MuiTablePagination` key:
 
-```{r eval=FALSE}
+```{r}
 DataGrid(
   rows = head(iris),
   localeText = list(
@@ -154,7 +154,7 @@ DataGrid(
 
 German UI text (`deDE`) with Swiss number formatting (`de-CH`):
 
-```{r eval=FALSE}
+```{r}
 DataGrid(
   rows = data.frame(city = c("Zürich", "Genève"), population = c(421878L, 203856L)),
   columns = list(
