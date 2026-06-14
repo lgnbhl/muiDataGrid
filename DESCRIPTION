@@ -18,7 +18,9 @@ Maintainer: Felix Luginbuhl <felix.luginbuhl@protonmail.ch>
 Description:
   Provides access to 'MUI X Data Grid', a fast and extensible React
   data table and React data grid, with filtering, sorting, pagination,
-  and more.
+  and more. Bundles the MIT-licensed community edition of the
+  '@mui/x-data-grid' JavaScript library (the commercial 'Pro' and
+  'Premium' tiers are not included).
 License: MIT + file LICENSE
 Encoding: UTF-8
 Depends: R (>= 3.4)
