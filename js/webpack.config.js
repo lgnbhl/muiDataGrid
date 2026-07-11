@@ -2,6 +2,25 @@ const webpack = require('webpack');
 const path = require('path');
 const { LicenseWebpackPlugin } = require('license-webpack-plugin');
 
+// This project builds with yarn (yarn.lock is the only lockfile; see
+// ../reinstall.sh and .github/workflows/js-bundle-check.yaml). The
+// "resolutions" pins in package.json are load-bearing:
+//
+// "react-is": "18.3.1" — shiny.react provides a React 18 runtime, but
+// @mui/x-data-grid declares react-is ^19. react-is 19 detects elements by
+// React 19's new Symbol.for('react.transitional.element') tag and does NOT
+// recognize React 18 elements (Symbol.for('react.element')), so bundling it
+// would silently break isElement/isFragment checks at runtime. Keep the pin
+// at the react-is major matching the React runtime shiny.react ships. To
+// verify a build: the bundle must contain no 'react.transitional.element'.
+//
+// "@mui/x-internals": "9.1.0" — @mui/x-data-grid 9.5.0 ships
+// @mui/x-virtualizer 9.0.0-alpha.8, which imports isFirefox/isJSDOM from
+// @mui/x-internals/platform; x-internals 9.8.0 (still within the declared
+// ^9.1.0 range) removed those exports and breaks the build. Drop this pin
+// when bumping @mui/x-data-grid to a version whose dependency pair is
+// coherent again (the build simply fails if it is not).
+
 const config = {
   entry: './src/index.js',
   mode: 'production',

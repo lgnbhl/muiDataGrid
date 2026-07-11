@@ -1385,7 +1385,7 @@
     prop-types "^15.8.1"
     use-sync-external-store "^1.6.0"
 
-"@mui/x-internals@^9.1.0":
+"@mui/x-internals@9.1.0", "@mui/x-internals@^9.1.0":
   version "9.1.0"
   resolved "https://registry.yarnpkg.com/@mui/x-internals/-/x-internals-9.1.0.tgz#d8429e7bb8874fc1d24f305d6610be29599fdf56"
   integrity sha512-fVezTa1lU+Hb3y9UMI8D/iWXADhs0I8PaZqoh2LOUXjGEUJmKqwsRD19ZXInZsH2yu+YS0dqYMPDvzjYTTyo+Q==
