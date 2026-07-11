@@ -276,6 +276,87 @@ test_that("DataGridServer warns and keeps user initialState over initialPageSize
   expect_equal(props$initialState$pagination$paginationModel$page, 2L)
 })
 
+test_that("DataGridServer rejects non-data.frame rows", {
+  expect_error(
+    DataGridServer(inputId = "grid", rows = matrix(1:4, 2)),
+    "data.frame"
+  )
+  expect_error(
+    DataGridServer(inputId = "grid", rows = list(list(id = 1))),
+    "data.frame"
+  )
+})
+
+# --- First automatic render (params not yet sent by the grid) ---
+
+test_that("DataGridServer first automatic render uses initialPageSize", {
+  df <- data.frame(x = 1:100)
+  props <- get_props(DataGridServer(
+    inputId = "grid",
+    rows = df,
+    initialPageSize = 25L
+  ))
+  expect_length(props$rows, 25)
+  expect_equal(props$rows[[1]]$x, 1L)
+  expect_equal(props$rowCount, 100L)
+})
+
+test_that("DataGridServer first automatic render honors user initialState pagination", {
+  # Regression: the React component seeds its controlled paginationModel from
+  # initialState, so R must slice that same page on first render — otherwise
+  # the served rows and the pagination footer disagree until the first click.
+  df <- data.frame(x = 1:100)
+  props <- get_props(DataGridServer(
+    inputId = "grid",
+    rows = df,
+    initialState = list(
+      pagination = list(paginationModel = list(page = 2L, pageSize = 10L))
+    )
+  ))
+  expect_length(props$rows, 10)
+  expect_equal(props$rows[[1]]$x, 21L)
+  expect_equal(props$rowCount, 100L)
+})
+
+test_that("DataGridServer initialState pagination wins over initialPageSize for first render", {
+  df <- data.frame(x = 1:100)
+  expect_warning(
+    result <- DataGridServer(
+      inputId = "grid",
+      rows = df,
+      initialPageSize = 25L,
+      initialState = list(
+        pagination = list(paginationModel = list(page = 0L, pageSize = 50L))
+      )
+    ),
+    "ignored"
+  )
+  expect_length(get_props(result)$rows, 50)
+})
+
+test_that("DataGridServer first render falls back to MUI defaults when initialState lacks pagination", {
+  # The JSX seeds page 0 / pageSize 100 when initialState has no
+  # paginationModel; the first automatic render must slice the same page
+  # (not initialPageSize, which is only honored when it builds initialState).
+  df <- data.frame(x = 1:150)
+  props <- get_props(DataGridServer(
+    inputId = "grid",
+    rows = df,
+    initialState = list(columns = list(columnVisibilityModel = list(x = TRUE)))
+  ))
+  expect_length(props$rows, 100)
+})
+
+test_that("DataGridServer messages when used without a Shiny session in knitr", {
+  df <- data.frame(x = 1:3)
+  old <- options(knitr.in.progress = TRUE)
+  on.exit(options(old))
+  expect_message(
+    DataGridServer(inputId = "grid", rows = df, rowCount = 3L),
+    "running Shiny session"
+  )
+})
+
 test_that("DataGridServer rejects two live outputs sharing one inputId", {
   df <- data.frame(name = c("a", "b"), height = c(1, 2))
   session <- shiny::MockShinySession$new()

@@ -33,9 +33,28 @@ has no equivalent in MUI X Data Grid, which leaves the server-side data
 layer entirely to the developer. It reimplements MUI's server-mode
 filtering and sorting semantics in R, so its behavior may change between
 releases and can differ in edge cases from MUI's own client-side filtering.
-Decisions worth knowing about: string filters are case-insensitive (except
-\code{is}, which is case-sensitive), missing values always sort last, and
-unrecognized filter operators pass all rows through \emph{with a warning}.
+Decisions worth knowing about:
+\itemize{
+  \item String filters are case-insensitive (except \code{is}, which is
+    case-sensitive); missing values always sort last; unrecognized filter
+    operators pass all rows through \emph{with a warning}.
+  \item Filter items with an empty value (\code{NULL}, \code{""}, or an
+    empty \code{isAnyOf} set) are ignored, matching MUI's client-side
+    behavior of disabling such items.
+  \item The toolbar quick filter is supported: each search term must appear
+    (case-insensitive substring) in at least one column other than
+    \code{id}; terms combine per the model's
+    \code{quickFilterLogicOperator} (\code{"and"} by default), and the
+    result is combined with the regular filter items using AND.
+  \item Sorting and string comparison use R's locale collation, so the
+    ordering of accented or mixed-case values can differ from the
+    browser's ordering in the client-side \code{DataGrid()}.
+  \item Date \code{is}/\code{not} compare values as strings (ISO dates
+    work; \code{Date} columns stringify to ISO), while
+    \code{after}/\code{before}/\code{onOrAfter}/\code{onOrBefore} parse
+    dates — a character column holding non-ISO dates filters correctly
+    with the latter but not with \code{is}/\code{not}.
+}
 }
 
 \examples{

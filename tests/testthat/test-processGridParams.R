@@ -603,7 +603,9 @@ test_that("isAnyOf is case-insensitive", {
   expect_equal(result$rowCount, 2)
 })
 
-test_that("isAnyOf with empty value list matches no rows", {
+test_that("isAnyOf with empty value list is ignored (matches MUI)", {
+  # MUI's client-side grid disables a filter item whose value is empty
+  # (all chips removed), so the server side must pass all rows too.
   params <- list(
     pagination_model = list(page = 0, pageSize = 100),
     sort_model = list(),
@@ -612,7 +614,159 @@ test_that("isAnyOf with empty value list matches no rows", {
     ))
   )
   result <- processGridParams(df, params)
-  expect_equal(result$rowCount, 0)
+  expect_equal(result$rowCount, 20)
+
+  # Shiny deserializes an empty JSON array to list(), not character(0).
+  params$filter_model$items[[1]]$value <- list()
+  expect_equal(processGridParams(df, params)$rowCount, 20)
+})
+
+# --- Empty filter values are ignored (MUI disables such items) ---
+
+test_that("string filter with empty value passes all rows", {
+  for (op in c("contains", "equals", "startsWith", "endsWith", "not", "is")) {
+    params <- list(
+      pagination_model = list(page = 0, pageSize = 100),
+      sort_model = list(),
+      filter_model = list(items = list(
+        list(field = "name", operator = op, value = "")
+      ))
+    )
+    result <- processGridParams(df, params)
+    expect_equal(result$rowCount, 20, info = paste("operator:", op))
+  }
+})
+
+test_that("number filter with empty value passes all rows", {
+  # Regression: "" coerced to NA made every comparison NA, dropping all rows
+  # (blank grid) the moment a user cleared a number filter's input.
+  for (op in c("=", "!=", ">", ">=", "<", "<=")) {
+    params <- list(
+      pagination_model = list(page = 0, pageSize = 100),
+      sort_model = list(),
+      filter_model = list(items = list(
+        list(field = "value", operator = op, value = "")
+      ))
+    )
+    result <- processGridParams(df, params)
+    expect_equal(result$rowCount, 20, info = paste("operator:", op))
+  }
+})
+
+test_that("isEmpty/isNotEmpty still work without a value", {
+  df_na <- data.frame(id = 1:3, name = c("a", NA, ""))
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(items = list(
+      list(field = "name", operator = "isEmpty")
+    ))
+  )
+  expect_equal(processGridParams(df_na, params)$rowCount, 2)
+  params$filter_model$items[[1]]$operator <- "isNotEmpty"
+  expect_equal(processGridParams(df_na, params)$rowCount, 1)
+})
+
+# --- Boolean columns (`is` operator) ---
+
+test_that("boolean 'is' filter matches logical columns", {
+  # MUI's boolean filter sends the strings "true"/"false"; a logical column
+  # stringifies to "TRUE"/"FALSE", so a plain string comparison matched
+  # nothing. Regression test for the logical-aware branch.
+  df_bool <- data.frame(
+    id = 1:4,
+    name = c("a", "b", "c", "d"),
+    active = c(TRUE, FALSE, TRUE, NA)
+  )
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(items = list(
+      list(field = "active", operator = "is", value = "true")
+    ))
+  )
+  result <- processGridParams(df_bool, params)
+  expect_equal(result$rowCount, 2)
+  expect_equal(result$rows$name, c("a", "c"))
+
+  params$filter_model$items[[1]]$value <- "false"
+  result <- processGridParams(df_bool, params)
+  expect_equal(result$rowCount, 1)
+  expect_equal(result$rows$name, "b")
+
+  # The "any" choice sends an empty value — no filtering.
+  params$filter_model$items[[1]]$value <- ""
+  expect_equal(processGridParams(df_bool, params)$rowCount, 4)
+})
+
+# --- Quick filter (toolbar search) ---
+
+test_that("quick filter matches a term in any column except id", {
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(items = list(), quickFilterValues = list("Row 1"))
+  )
+  result <- processGridParams(df, params)
+  # "Row 1" matches Row 1 and Row 10..19 in `name`; nothing else.
+  expect_equal(result$rowCount, 11)
+
+  # A term matching only the id column must not match anything: ids are not
+  # displayed by the auto-generated columns.
+  df_id <- data.frame(id = c(7, 8), label = c("alpha", "beta"))
+  params$filter_model$quickFilterValues <- list("7")
+  expect_equal(processGridParams(df_id, params)$rowCount, 0)
+})
+
+test_that("quick filter is case-insensitive substring matching", {
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(items = list(), quickFilterValues = list("row 20"))
+  )
+  expect_equal(processGridParams(df, params)$rowCount, 1)
+})
+
+test_that("quick filter combines terms with AND by default and OR when asked", {
+  df_qf <- data.frame(
+    id = 1:3,
+    fruit = c("apple pie", "banana split", "apple juice")
+  )
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(
+      items = list(),
+      quickFilterValues = list("apple", "juice")
+    )
+  )
+  expect_equal(processGridParams(df_qf, params)$rowCount, 1)
+
+  params$filter_model$quickFilterLogicOperator <- "or"
+  expect_equal(processGridParams(df_qf, params)$rowCount, 2)
+})
+
+test_that("quick filter is ANDed with regular filter items", {
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(
+      items = list(list(field = "group", operator = "equals", value = "A")),
+      quickFilterValues = list("Row 1")
+    )
+  )
+  result <- processGridParams(df, params)
+  # group A limits to values 1..10; "Row 1" matches 1 and 10 within it.
+  expect_equal(sort(result$rows$value), c(1, 10))
+})
+
+test_that("quick filter with only empty/blank terms passes all rows", {
+  params <- list(
+    pagination_model = list(page = 0, pageSize = 100),
+    sort_model = list(),
+    filter_model = list(items = list(), quickFilterValues = list(""))
+  )
+  expect_equal(processGridParams(df, params)$rowCount, 20)
 })
 
 # --- Date filter operators ---

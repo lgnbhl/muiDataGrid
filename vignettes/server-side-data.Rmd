@@ -150,10 +150,13 @@ Returns a list with:
 | String | `contains`, `equals`, `startsWith`, `endsWith`, `not` / `!=`, `isEmpty`, `isNotEmpty`, `isAnyOf` |
 | Number | `=`, `!=`, `>`, `>=`, `<`, `<=`, `isEmpty`, `isNotEmpty`, `isAnyOf` |
 | Date | `is`, `not`, `after`, `onOrAfter`, `before`, `onOrBefore`, `isEmpty`, `isNotEmpty` |
+| Boolean | `is` (accepts MUI's `"true"` / `"false"` values) |
+
+The toolbar **quick filter** (`showToolbar = TRUE`) is also supported: each search term must appear — as a case-insensitive substring — in at least one column other than `id`; terms combine per the model's `quickFilterLogicOperator` (`"and"` by default), and the result is combined with the regular filter items using AND.
 
 Unrecognized operators pass all rows through (no filtering) **and emit a warning**. If you need operators not listed here, use manual mode and handle filtering yourself.
 
-> **Note:** String operators (`contains`, `equals`, `startsWith`, `endsWith`, `not`) are case-insensitive. The `is` operator is case-sensitive, matching MUI's default behavior. Because filtering is reimplemented in R, edge cases (locale, accents) can differ from MUI's own client-side filter.
+> **Note:** String operators (`contains`, `equals`, `startsWith`, `endsWith`, `not`) are case-insensitive. The `is` operator is case-sensitive, matching MUI's default behavior. Filter items with an empty value (cleared text input, all `isAnyOf` chips removed, boolean "any") are ignored, matching MUI's client-side behavior. Because filtering is reimplemented in R, edge cases (locale collation, accents) can differ from MUI's own client-side filter.
 
 ## Opinionated behavior to be aware of
 
@@ -228,7 +231,7 @@ The grid state is available in `input$<inputId>` as a list with three elements:
 
 - `pagination_model`: list with `page` (0-indexed) and `pageSize`
 - `sort_model`: list of sort items, each with `field` and `sort` ("asc" or "desc")
-- `filter_model`: list with `items`, each containing `field`, `operator`, and `value`; and `logicOperator` ("and" or "or")
+- `filter_model`: list with `items`, each containing `field`, `operator`, and `value`; `logicOperator` ("and" or "or"); and, when the toolbar quick filter is used, `quickFilterValues`
 
 You can use this to display diagnostics or trigger other reactive logic:
 

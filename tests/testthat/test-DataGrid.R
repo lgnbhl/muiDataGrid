@@ -144,3 +144,14 @@ test_that("DataGrid handles NULL rows", {
   expect_s3_class(result, "shiny.tag")
   expect_null(get_props(result)$columns)
 })
+
+test_that("DataGrid rejects non-data.frame rows with a clear error", {
+  expect_error(DataGrid(rows = matrix(1:4, 2)), "data.frame")
+  expect_error(DataGrid(rows = list(list(id = 1, name = "Luke"))), "data.frame")
+  expect_error(DataGrid(rows = 1:3), "data.frame")
+})
+
+test_that("DataGrid warns when id column contains NA", {
+  df <- data.frame(id = c(1, NA), name = c("Luke", "Leia"))
+  expect_warning(DataGrid(rows = df), "missing")
+})

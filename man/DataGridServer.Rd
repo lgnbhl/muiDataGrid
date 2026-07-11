@@ -21,7 +21,9 @@ DataGridServer(
 filtering changes, the new state is available as \code{input$<inputId>}
 in the server. The value is a list with elements \code{pagination_model}
 (list with \code{page} and \code{pageSize}), \code{sort_model} (list of
-sort items), and \code{filter_model} (list with \code{items}).}
+sort items), and \code{filter_model} (list with \code{items},
+\code{logicOperator}, and — when the toolbar quick filter is used —
+\code{quickFilterValues}).}
 
 \item{rows}{A data.frame. Pass the \strong{full} dataset (like
 \code{DataGrid()}) and let \code{DataGridServer()} handle pagination
@@ -43,7 +45,10 @@ automatically from the full \code{rows} dataset.}
 \item{initialPageSize}{Integer. Convenience for setting the initial page
 size. Builds MUI's \code{initialState} prop. If \code{NULL}, MUI defaults
 to 100. Also sets the page size for the first automatic render before the
-grid has sent state. Must be included in \code{pageSizeOptions}.}
+grid has sent state. Must be included in \code{pageSizeOptions}. Ignored
+(with a warning) when you pass your own \code{initialState} via
+\code{...} — the \code{paginationModel} in your \code{initialState} then
+governs both the grid and the first automatic render.}
 
 \item{pageSizeOptions}{Integer vector. Available page size options. If
 \code{NULL}, MUI defaults to \code{c(25, 50, 100)}.}
@@ -94,6 +99,12 @@ knowing about:
     (e.g. from a \code{selectInput}) has no effect on the already-mounted
     grid. To change page size after mount, drive it from the grid's own
     controls rather than re-rendering with a new \code{initialPageSize}.
+    A \code{paginationModel} inside a user-supplied \code{initialState} is
+    honored by the first automatic render, so the served page matches what
+    the grid displays from the start.
+  \item A running Shiny session is required: in a static document the grid
+    renders its first page but pagination, sorting, and filtering have
+    nothing to respond to them. Use \code{DataGrid()} for static documents.
 }
 }
 
