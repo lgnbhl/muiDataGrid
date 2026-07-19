@@ -37,6 +37,8 @@ navbar:
       href: articles/localization.html
     - text: Custom with React JS
       href: articles/custom-react-js.html
+    - text: llms.txt
+      href: llms.txt
   - text: R Shiny
     menu:
     - text: Bootstrap CSS Conflicts
