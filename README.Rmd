@@ -21,13 +21,13 @@ knitr::opts_chunk$set(
 ```{r message=FALSE, warning=FALSE, include=FALSE}
 # get JS dependencies (react now lives in devDependencies)
 pkg <- jsonlite::fromJSON("js/package.json")
-gridVersion <- pkg$dependencies[["@mui/x-data-grid"]]
+pkgVersion <- pkg$dependencies[["@mui/x-data-grid"]]
 reactVersion <- pkg$devDependencies[["react"]]
 ```
 
 [![CRAN status](https://www.r-pkg.org/badges/version/muiDataGrid)](https://CRAN.R-project.org/package=muiDataGrid)
 [![R-CMD-check](https://github.com/lgnbhl/muiDataGrid/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/lgnbhl/muiDataGrid/actions/workflows/R-CMD-check.yaml)
-`r badger::badge_custom("@mui/x-data-grid", gridVersion, "blue", "https://mui.com/x/react-data-grid/")`
+`r badger::badge_custom("@mui/x-data-grid", pkgVersion, "blue", "https://mui.com/x/react-data-grid/")`
 `r badger::badge_custom("react", reactVersion, "blue", "https://mui.com/x/react-data-grid/")`
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Follow-E4405F?style=social&logo=linkedin)](https://www.linkedin.com/in/FelixLuginbuhl)
 <!-- badges: end -->
@@ -81,10 +81,24 @@ DataGrid(
 )
 ```
 
-**Read the full documentation with examples [here](https://felixluginbuhl.com/muiDataGrid/).**
+### Resources
 
-### Contribute
+- [Package documentation](https://felixluginbuhl.com/muiDataGrid/)
+- [All R examples](https://github.com/lgnbhl/muiDataGrid/tree/main/inst/examples
+- [Official MUI X Data Grid docs](https://mui.com/x/react-data-grid/)
 
-If you have any issue, question or want to contribute with a pull request, don't hesitate to write me on https://felixluginbuhl.com/muiDataGrid/
+### Acknowledgements
 
-For updates follow [Felix Luginbuhl](https://www.linkedin.com/in/FelixLuginbuhl) on LinkedIn.
+`muiDataGrid` is built on top of [shiny.react](https://github.com/Appsilon/shiny.react), the R package by [Appsilon](https://www.appsilon.com/) that makes it possible to use React components in Shiny and Quarto.
+
+### Contributing
+
+If you have any issue, question or want to contribute with a pull request, don't hesitate to write me on https://github.com/lgnbhl/muiDataGrid/
+
+Follow [Felix Luginbuhl](https://linkedin.com/in/FelixLuginbuhl) on LinkedIn for updates.
+
+### Trademark notice
+
+"MUI" and "MUI X Data Grid" are trademarks of MUI Inc. `muiDataGrid` is an independent, community-maintained R package and is **not affiliated with, sponsored by, or endorsed by MUI Inc.** The names are used solely to identify the underlying JavaScript library that this package wraps. See MUI's [legal information](https://mui.com/legal/) for the canonical list of MUI's published policies.
+
+

@@ -8,7 +8,7 @@
 [![CRAN
 status](https://www.r-pkg.org/badges/version/muiDataGrid)](https://CRAN.R-project.org/package=muiDataGrid)
 [![R-CMD-check](https://github.com/lgnbhl/muiDataGrid/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/lgnbhl/muiDataGrid/actions/workflows/R-CMD-check.yaml)
-[![](https://img.shields.io/badge/@mui/x--data--grid-9.0.2-blue.svg)](https://mui.com/x/react-data-grid/)
+[![](https://img.shields.io/badge/@mui/x--data--grid-9.5.0-blue.svg)](https://mui.com/x/react-data-grid/)
 [![](https://img.shields.io/badge/react-18.3.1-blue.svg)](https://mui.com/x/react-data-grid/)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Follow-E4405F?style=social&logo=linkedin)](https://www.linkedin.com/in/FelixLuginbuhl)
 <!-- badges: end -->
@@ -64,14 +64,34 @@ DataGrid(
 )
 ```
 
-**Read the full documentation with examples
-[here](https://felixluginbuhl.com/muiDataGrid/).**
+### Resources
 
-### Contribute
+- [Package documentation](https://felixluginbuhl.com/muiDataGrid/)
+- \[All R
+  examples\](<https://github.com/lgnbhl/muiDataGrid/tree/main/inst/examples>
+- [Official MUI X Data Grid docs](https://mui.com/x/react-data-grid/)
+
+### Acknowledgements
+
+`muiDataGrid` is built on top of
+[shiny.react](https://github.com/Appsilon/shiny.react), the R package by
+[Appsilon](https://www.appsilon.com/) that makes it possible to use
+React components in Shiny and Quarto.
+
+### Contributing
 
 If you have any issue, question or want to contribute with a pull
 request, don’t hesitate to write me on
-<https://felixluginbuhl.com/muiDataGrid/>
+<https://github.com/lgnbhl/muiDataGrid/>
 
-For updates follow [Felix
-Luginbuhl](https://www.linkedin.com/in/FelixLuginbuhl) on LinkedIn.
+Follow [Felix Luginbuhl](https://linkedin.com/in/FelixLuginbuhl) on
+LinkedIn for updates.
+
+### Trademark notice
+
+“MUI” and “MUI X Data Grid” are trademarks of MUI Inc. `muiDataGrid` is
+an independent, community-maintained R package and is **not affiliated
+with, sponsored by, or endorsed by MUI Inc.** The names are used solely
+to identify the underlying JavaScript library that this package wraps.
+See MUI’s [legal information](https://mui.com/legal/) for the canonical
+list of MUI’s published policies.
