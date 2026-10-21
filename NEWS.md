@@ -1,12 +1,26 @@
 # muiDataGrid (development version)
 
+* `DataGridServer()` now answers the grid's data requests over HTTP, through
+  a session-scoped endpoint (`session$registerDataObj()`, as DT does for
+  server-side tables), instead of re-rendering the grid for every page. With
+  `rows`, the call is unchanged; paging no longer re-runs the `renderReact()`
+  that created the grid, and an error while producing a page is reported in
+  the R console instead of breaking the output.
+* New `getRows` argument: a function of the grid's request returning
+  `list(rows, rowCount)` for that page, mirroring MUI's `dataSource.getRows`.
+  Use it to query a database or apply custom logic; `processGridParams()`
+  returns exactly this shape.
+* Deprecated: passing a pre-sliced page to `DataGridServer()` with `rowCount`
+  (re-rendered from `input$<inputId>`). It still works, with a warning once
+  per session; move the logic into `getRows`. See "Migrating from rowCount"
+  in `vignette("server-side-data")`.
+
 * `DataGridServer()` is now built on MUI X Data Grid's own server-side data
   source instead of a custom state layer. The R API is unchanged. MUI now owns
   pagination, sort, and filter state and the reset to the first page; slow or
   out-of-order responses can no longer show a stale page; and the grid shows
   its loading overlay automatically while it waits for R, so the `loading`
-  argument is rarely needed. `input$<inputId>` gains a `request_id`, which
-  `DataGridServer()` sends back automatically.
+  argument is rarely needed.
 * In a Shiny session the grid now requests its first page from R as soon as
   it mounts, instead of R guessing which page it opens on. Grids using
   `autoPageSize` or an `initialState` with only a `pageSize` now open on the

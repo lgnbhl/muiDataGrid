@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useMemo } from 'react';
+import React, { useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   DataGrid,
   useGridApiRef,
@@ -10,12 +10,12 @@ import {
 // Server-side grid backed by MUI's own data source: MUI owns the pagination,
 // sort, and filter state, resets to the first page, forces the server modes,
 // shows the loading overlay, and drops stale responses. This component only
-// bridges MUI's getRows() promise to Shiny: each request is posted as
-// input$<inputId> with a request_id, R re-renders with that page, and
-// DataGridServer() echoes the id back as `requestId` to resolve it.
+// answers MUI's getRows(): by POSTing the request to the HTTP endpoint
+// DataGridServer() registered (`dataUrl`), or, for the deprecated pre-sliced
+// page, through input$<inputId> and a re-render (see useInputBridge).
 
-// How long a request waits for a replacement before it is posted to R (see
-// getRows). Small next to a Shiny round-trip.
+// How long a request waits for a replacement before it is sent (see
+// makeRowSource). Small next to a round-trip to R.
 const COALESCE_MS = 50;
 
 // The columns MUI's quick filter searches: visible ones (unless the model opts
@@ -33,84 +33,129 @@ function quickFilterFields(filterModel, apiRef) {
     .map((col) => ({ field: col.field, type: col.type ?? 'string' }));
 }
 
-function ServerSideDataGrid({
-  inputId, rows, rowCount, requestId, loading, filterDebounce, ...otherProps
-}) {
-  const apiRef = useGridApiRef();
-  // Latest page R rendered, read when a request can be answered locally.
-  const served = useRef({ rows, rowCount });
-  // Signature of the request `served` answers; null until R answered one.
-  const servedSignature = useRef(null);
-  const pending = useRef(new Map()); // request id -> { resolve, sig }
-  const lastId = useRef(0);
-  const sendTimer = useRef(null);
+// MUI's request in the shape R reads (input$<inputId>, getRows, and
+// processGridParams()). getRows() runs on the grid's current state, so MUI's
+// own selector gives the filter items it applies: inactive ones (an operator
+// picked but no value yet, the row the filter panel adds on open) are left out.
+function toRequest(params, apiRef) {
+  const filterModel = { ...params.filterModel, items: gridFilterActiveItemsSelector(apiRef) };
+  const request = {
+    pagination_model: params.paginationModel,
+    sort_model: params.sortModel,
+    filter_model: filterModel,
+  };
+  const fields = quickFilterFields(filterModel, apiRef);
+  if (fields) request.quick_filter_fields = fields;
+  return request;
+}
 
-  useEffect(() => () => clearTimeout(sendTimer.current), []);
-
-  const dataSource = useMemo(() => ({
-    getRows: (params) => new Promise((resolve) => {
-      // Static documents have no Shiny: only the first page R rendered exists.
-      if (!window.Shiny?.setInputValue) {
-        resolve(served.current);
-        return;
-      }
-      // getRows() runs on the grid's current state, so MUI's own selector
-      // gives the filter items it applies: inactive ones (an operator picked
-      // but no value yet, the row the filter panel adds on open) are left out.
-      const filterModel = {
-        ...params.filterModel,
-        items: gridFilterActiveItemsSelector(apiRef),
-      };
-      const fields = quickFilterFields(filterModel, apiRef);
-      const sig = JSON.stringify([
-        params.paginationModel, params.sortModel, filterModel, fields,
-      ]);
-      // Nothing R's answer depends on changed: reuse it.
-      if (sig === servedSignature.current && pending.current.size === 0) {
-        resolve(served.current);
-        return;
-      }
-      lastId.current += 1;
-      pending.current.set(lastId.current, { resolve, sig });
-      const payload = {
-        pagination_model: params.paginationModel,
-        sort_model: params.sortModel,
-        filter_model: filterModel,
-        request_id: lastId.current,
-      };
-      if (fields) payload.quick_filter_fields = fields;
-      // A sort or filter change away from page 0 makes MUI request twice: once
-      // for the old page, then (a few ms later, after it resets to page 0) for
-      // the new one. Holding each request briefly lets the second replace the
-      // first, so R renders once. A replaced request stays pending and is
-      // resolved, as stale, by the answer to the newer one.
-      clearTimeout(sendTimer.current);
-      sendTimer.current = setTimeout(() => {
-        window.Shiny.setInputValue(inputId, payload, { priority: 'event' });
+// Wraps `send(request) -> Promise<{ rows, rowCount }>` for MUI's getRows():
+// - A request identical to the last one answered (only inactive filter items
+//   changed, e.g. the filter panel opened) is answered from that answer.
+// - A sort or filter change away from page 0 makes MUI request twice: once for
+//   the old page, then, a few ms later after it resets to page 0, for the new
+//   one. Holding each request briefly lets the second replace the first, so R
+//   answers once; the replaced request gets the same answer, which MUI
+//   discards as stale.
+// `last` is a ref so a re-render that updates rows in place can refresh it.
+function makeRowSource(send, last) {
+  let timer = null;
+  let waiting = [];
+  return (request) => {
+    const key = JSON.stringify(request);
+    if (last.current?.key === key && waiting.length === 0) {
+      return Promise.resolve(last.current.answer);
+    }
+    return new Promise((resolve, reject) => {
+      waiting.push({ resolve, reject });
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const batch = waiting;
+        waiting = [];
+        send(request).then(
+          (answer) => {
+            last.current = { key, answer };
+            batch.forEach((w) => w.resolve(answer));
+          },
+          (error) => batch.forEach((w) => w.reject(error)),
+        );
       }, COALESCE_MS);
-    }),
-  }), [apiRef, inputId]);
+    });
+  };
+}
 
-  // Each R render answers the request it echoes (and any older one Shiny
-  // coalesced into it; MUI ignores those as stale). A render that answers no
-  // pending request (the data changed, or another reactive re-ran) updates the
-  // current page in place, unless a newer request is still on its way.
+// POST the request to DataGridServer()'s endpoint; it answers with the page.
+// The state is also posted as input$<inputId> for observers in the app.
+function postTo(dataUrl, inputId) {
+  return async (request) => {
+    window.Shiny.setInputValue(inputId, request);
+    const response = await fetch(dataUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error ?? `Request failed (${response.status})`);
+    return body;
+  };
+}
+
+// Deprecated: the pre-sliced page (DataGridServer(rows, rowCount) re-rendered
+// from input$<inputId>). The request is posted as input$<inputId> with a
+// request_id; R re-renders with that page and DataGridServer() echoes the id
+// back as `requestId`, which resolves it. A re-render answering no request
+// (the data changed) updates the page in place. Remove with `rowCount`.
+function useInputBridge(inputId, rows, rowCount, requestId, apiRef, last) {
+  const pending = useRef(new Map()); // request id -> resolve
+  const lastId = useRef(0);
+  const answered = useRef(false);
   useEffect(() => {
-    served.current = { rows, rowCount };
-    const answered = pending.current.get(requestId);
-    if (answered) {
-      servedSignature.current = answered.sig;
-      pending.current.forEach(({ resolve }, id) => {
+    const answer = { rows, rowCount };
+    if (pending.current.has(requestId)) {
+      answered.current = true;
+      pending.current.forEach((resolve, id) => {
         if (id <= requestId) {
-          resolve(served.current);
+          resolve(answer);
           pending.current.delete(id);
         }
       });
-    } else if (pending.current.size === 0 && servedSignature.current !== null) {
+    } else if (pending.current.size === 0 && answered.current) {
       apiRef.current?.setRows(rows ?? []);
       if (rowCount != null) apiRef.current?.setRowCount(rowCount);
+      if (last.current) last.current = { ...last.current, answer };
     }
-  }, [rows, rowCount, requestId, apiRef]);
+  }, [rows, rowCount, requestId, apiRef, last]);
+  return useCallback((request) => new Promise((resolve) => {
+    lastId.current += 1;
+    pending.current.set(lastId.current, resolve);
+    window.Shiny.setInputValue(inputId, { ...request, request_id: lastId.current }, { priority: 'event' });
+  }), [inputId]);
+}
+
+function ServerSideDataGrid({
+  inputId, dataUrl, rows, rowCount, requestId, loading, filterDebounce, ...otherProps
+}) {
+  const apiRef = useGridApiRef();
+  const last = useRef(null);
+  const staticPage = useRef({ rows, rowCount });
+  const sendViaInput = useInputBridge(inputId, rows, rowCount, requestId, apiRef, last);
+
+  // A new dataUrl (R re-rendered the grid, e.g. because its data changed) is a
+  // new data source, which makes MUI reload the current page.
+  const dataSource = useMemo(() => {
+    last.current = null;
+    let send;
+    if (!window.Shiny?.setInputValue) {
+      // Static documents have no Shiny: only the first page R rendered exists.
+      send = async () => staticPage.current;
+    } else if (dataUrl) {
+      send = postTo(dataUrl, inputId);
+    } else {
+      send = sendViaInput;
+    }
+    const source = makeRowSource(send, last);
+    return { getRows: (params) => source(toRequest(params, apiRef)) };
+  }, [dataUrl, inputId, sendViaInput, apiRef]);
 
   // Hiding or showing a column changes which columns the quick filter searches,
   // but MUI does not refetch on it.

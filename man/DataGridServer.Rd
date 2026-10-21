@@ -13,34 +13,31 @@ DataGridServer(
   initialPageSize = NULL,
   pageSizeOptions = NULL,
   filterDebounce = NULL,
+  getRows = NULL,
   ...
 )
 }
 \arguments{
-\item{inputId}{Character. The Shiny input ID. When pagination, sorting, or
-filtering changes, the new state is available as \code{input$<inputId>}
-in the server. The value is a list with elements \code{pagination_model}
-(list with \code{page} and \code{pageSize}), \code{sort_model} (list of
-sort items), and \code{filter_model} (list with \code{items},
+\item{inputId}{Character. The Shiny input ID. On every data request the
+grid's state is available as \code{input$<inputId>} in the server, a list
+with elements \code{pagination_model} (list with \code{page} and
+\code{pageSize}), \code{sort_model} (list of sort items), and
+\code{filter_model} (list with \code{items}, the filters MUI applies,
 \code{logicOperator}, and — when the toolbar quick filter is used —
 \code{quickFilterValues}). While the quick filter is active the list also
 holds \code{quick_filter_fields}: the columns it searches, each a list
-with \code{field} and \code{type}. \code{request_id} identifies the
-grid's data request; \code{DataGridServer()} sends it back automatically.}
+with \code{field} and \code{type}. \code{getRows} receives the same list.}
 
-\item{rows}{A data.frame. Pass the \strong{full} dataset (like
-\code{DataGrid()}) and let \code{DataGridServer()} handle pagination
-automatically, or pass a pre-sliced page together with an explicit
-\code{rowCount} for manual control.}
+\item{rows}{A data.frame with the \strong{full} dataset (like
+\code{DataGrid()}); \code{DataGridServer()} pages, sorts, and filters it.
+Leave \code{NULL} when using \code{getRows}.}
 
 \item{columns}{Column definitions (list of lists). If NULL, auto-generated
 from \code{names(rows)}, with each column's \code{type} inferred from its
-R class (see \code{\link{DataGrid}}).}
+R class (see \code{\link{DataGrid}}). Required with \code{getRows}.}
 
-\item{rowCount}{Integer. When provided, \code{rows} is assumed to be
-already paginated and \code{rowCount} is used as the total row count
-(manual mode). When \code{NULL} (default), pagination is handled
-automatically from the full \code{rows} dataset.}
+\item{rowCount}{\strong{Deprecated.} Total row count for a pre-sliced page
+in \code{rows}; use \code{getRows} instead.}
 
 \item{loading}{Logical. Usually not needed: the grid shows its loading
 overlay automatically while it waits for R. \code{TRUE} forces it on.}
@@ -59,6 +56,13 @@ to 300 ms. Superseded by MUI's own \code{filterDebounceMs} prop, which you
 can pass via \code{...} and which takes precedence. The toolbar quick
 filter has its own debounce.}
 
+\item{getRows}{A function taking the grid's request (\code{params}, the
+list described under \code{inputId}) and returning that page as
+\code{list(rows = <data.frame>, rowCount = <total number of matching
+rows>)}, the shape \code{\link{processGridParams}} returns. Mirrors MUI's
+\code{dataSource.getRows}. Use it instead of \code{rows} to query a
+database or API page by page.}
+
 \item{...}{Additional props passed directly to the MUI DataGrid component.
 Note: MUI's server-side data source forces \code{paginationMode},
 \code{sortingMode}, and \code{filterMode} to \code{"server"} and
@@ -68,55 +72,63 @@ Note: MUI's server-side data source forces \code{paginationMode},
 A shiny.react element.
 }
 \description{
-A DataGrid component with server-side pagination, sorting, and filtering.
-The component sends pagination, sort, and filter state to R via a Shiny input.
+A DataGrid component with server-side pagination, sorting, and filtering,
+built on MUI X Data Grid's own server-side
+\href{https://mui.com/x/react-data-grid/server-side-data/}{data source}:
+whenever the user changes page, sorts, or filters, the grid requests that
+page from R, and R answers with only those rows.
 }
 \details{
-Pass the full dataset via \code{rows} — just like \code{DataGrid()} —
-and \code{DataGridServer()} handles pagination, sorting, and filtering
-automatically. For manual control (e.g. database queries), supply
-pre-sliced \code{rows} together with an explicit \code{rowCount}.
+Pass the full dataset via \code{rows} — just like \code{DataGrid()} — and
+\code{DataGridServer()} pages, sorts, and filters it in R (see
+\code{\link{processGridParams}}). To produce each page yourself (e.g. from a
+database query), pass \code{getRows}: MUI's own data source contract, a
+function that receives the grid's request and returns that page.
 }
 \section{Lifecycle}{
 
 \strong{Experimental.} \code{DataGridServer()} (together with
-\code{\link{processGridParams}}) is \emph{specific to this R package} and has
-no equivalent in MUI X Data Grid: MUI ships only the building blocks
-(\code{paginationMode = "server"} plus callbacks) and leaves the data layer
-to you. This wrapper supplies that layer in R, and in doing so encodes a
-number of opinionated decisions that may change in future releases. Pin the
-package version if you rely on the current behavior. Decisions worth
-knowing about:
+\code{\link{processGridParams}}) connects MUI's data source to R and may
+change in future releases. Pin the package version if you rely on the
+current behavior. Decisions worth knowing about:
 \itemize{
-  \item Mode is selected by the presence of \code{rowCount}: supply it to
-    pass a pre-sliced page (manual mode); omit it to let the full
-    \code{rows} be paginated automatically.
+  \item Each request is answered over HTTP, through a session-scoped
+    endpoint (\code{session$registerDataObj()}, as DT does for server-side
+    tables). Paging therefore does not re-run the \code{renderReact()} that
+    created the grid; re-running it (e.g. because \code{rows} changed)
+    reloads the current page.
+  \item \code{getRows} is called outside a reactive context, with reactive
+    values isolated. Read the values it depends on (e.g. \code{input$year})
+    in the \code{renderReact()} body, so a change re-renders the grid and
+    reloads the page.
   \item Changing the sort or any filter resets the grid to the first page.
   \item Each \code{DataGridServer()} needs its own \code{inputId}; two grids
     sharing one would overwrite each other's state, as with any Shiny input.
   \item Unrecognized filter operators pass all rows through with a warning
     (see \code{\link{processGridParams}}).
-  \item When \code{rows} has no \code{id} column, ids are generated
-    positionally and are \emph{not} stable across sort/filter changes.
-    Supply a stable, unique \code{id} column if you use row selection.
+  \item When rows have no \code{id} column, ids are generated positionally
+    and are \emph{not} stable across sort/filter changes. Supply a stable,
+    unique \code{id} column if you use row selection.
   \item \code{initialPageSize}, \code{initialState}, and any initial sort or
     filter seed the grid \emph{only on the first render}. MUI reads them
     once when the grid mounts, so changing them reactively afterwards
     (e.g. from a \code{selectInput}) has no effect on the already-mounted
     grid. To change page size after mount, drive it from the grid's own
     controls rather than re-rendering with a new \code{initialPageSize}.
-  \item In a Shiny session the grid requests its first page from R as soon
-    as it mounts, like every later page, so it opens on exactly the page
-    its \code{initialState} describes.
   \item A running Shiny session is required: in a static document the grid
     renders its first page but pagination, sorting, and filtering have
     nothing to respond to them. Use \code{DataGrid()} for static documents.
+  \item \strong{Deprecated:} passing a pre-sliced page in \code{rows}
+    together with \code{rowCount}, re-rendered from \code{input$<inputId>}.
+    It still works, with a warning once per session; use \code{getRows}
+    instead, e.g.
+    \code{getRows = function(params) processGridParams(data, params)}.
 }
 }
 
 \examples{
 \dontrun{
-# Simple usage: pass the full dataset, pagination is handled automatically
+# Pass the full dataset: R pages, sorts, and filters it
 output$grid <- renderReact({
   DataGridServer("grid_params",
     rows = my_data,
@@ -125,12 +137,11 @@ output$grid <- renderReact({
   )
 })
 
-# Manual usage: handle pagination yourself (e.g. database queries)
+# Produce each page yourself (e.g. from a database query)
 output$grid <- renderReact({
-  result <- processGridParams(my_data, input$grid_params, pageSize = 10L)
   DataGridServer("grid_params",
-    rows = result$rows,
-    rowCount = result$rowCount,
+    columns = list(list(field = "name"), list(field = "value", type = "number")),
+    getRows = function(params) processGridParams(my_data, params),
     initialPageSize = 10L,
     pageSizeOptions = c(10L, 25L, 50L)
   )

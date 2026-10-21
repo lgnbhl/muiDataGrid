@@ -27,6 +27,7 @@ Language: en-US
 Depends: R (>= 3.4)
 Imports:
     htmltools,
+    jsonlite,
     shiny,
     shiny.react (>= 0.4.0),
     muiMaterial (>= 0.2.1),

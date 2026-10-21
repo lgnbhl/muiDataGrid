@@ -199,17 +199,106 @@ test_that("DataGridServer leaves the server-mode props to MUI's data source", {
   expect_null(props$pagination)
 })
 
-test_that("DataGridServer sends only the column structure before the first request", {
-  # In a session the grid requests its first page itself, so R must not guess
-  # which page that is.
+test_that("DataGridServer serves pages over an HTTP endpoint in a session", {
+  # The grid requests every page itself, so R sends only the columns and the
+  # endpoint URL, then answers each request.
   df <- data.frame(name = paste("Row", 1:30), value = 1:30)
   session <- shiny::MockShinySession$new()
+  endpoints <- local_endpoints()
   props <- get_props(shiny::withReactiveDomain(session, shiny::isolate(
     DataGridServer("grid", rows = df, initialPageSize = 25)
   )))
   expect_length(props$rows, 0)
+  expect_match(props$dataUrl, "dataobj/grid")
+  expect_null(props$requestId)
   expect_equal(vapply(props$columns, function(c) c$field, ""), c("name", "value"))
   expect_equal(props$columns[[2]]$type, "number")
+
+  res <- request_endpoint(endpoints, "grid", page_request(
+    page = 0, pageSize = 5,
+    sort = list(list(field = "value", sort = "desc"))
+  ))
+  expect_equal(res$status, 200L)
+  expect_equal(res$body$rowCount, 30)
+  expect_equal(vapply(res$body$rows, function(r) r$value, 1), 30:26)
+
+  res <- request_endpoint(endpoints, "grid", page_request(items = list(
+    list(field = "value", operator = ">", value = "28")
+  )))
+  expect_equal(res$body$rowCount, 2)
+})
+
+test_that("DataGridServer endpoint reports errors instead of crashing", {
+  session <- shiny::MockShinySession$new()
+  endpoints <- local_endpoints()
+  shiny::withReactiveDomain(session, shiny::isolate(DataGridServer(
+    "grid",
+    columns = list(list(field = "x")),
+    getRows = function(params) stop("database is down")
+  )))
+  expect_warning(res <- request_endpoint(endpoints, "grid", page_request()), "database is down")
+  expect_equal(res$status, 500L)
+  expect_equal(res$body$error, "database is down")
+})
+
+test_that("DataGridServer getRows receives the request and returns the page", {
+  df <- data.frame(name = paste("Row", 1:30), value = 1:30)
+  seen <- NULL
+  session <- shiny::MockShinySession$new()
+  endpoints <- local_endpoints()
+  props <- get_props(shiny::withReactiveDomain(session, shiny::isolate(DataGridServer(
+    "grid",
+    columns = list(list(field = "name"), list(field = "value", type = "number")),
+    getRows = function(params) {
+      seen <<- params
+      processGridParams(df, params)
+    }
+  ))))
+  expect_length(props$rows, 0)
+  res <- request_endpoint(endpoints, "grid", page_request(page = 1, pageSize = 10))
+  expect_equal(seen$pagination_model$page, 1)
+  expect_equal(res$body$rowCount, 30)
+  expect_equal(vapply(res$body$rows, function(r) r$value, 1), 11:20)
+})
+
+test_that("DataGridServer getRows must return rows and rowCount", {
+  session <- shiny::MockShinySession$new()
+  endpoints <- local_endpoints()
+  shiny::withReactiveDomain(session, shiny::isolate(DataGridServer(
+    "grid", columns = list(list(field = "x")), getRows = function(params) data.frame(x = 1)
+  )))
+  expect_warning(res <- request_endpoint(endpoints, "grid", page_request()), "must return")
+  expect_equal(res$status, 500L)
+})
+
+test_that("DataGridServer validates getRows usage", {
+  cols <- list(list(field = "x"))
+  expect_error(DataGridServer("g", columns = cols, getRows = "nope"), "must be a function")
+  expect_error(
+    DataGridServer("g", rows = data.frame(x = 1), columns = cols, getRows = function(p) NULL),
+    "either `rows` or `getRows`"
+  )
+  expect_error(DataGridServer("g", getRows = function(p) NULL), "`columns` is required")
+})
+
+test_that("DataGridServer getRows renders the first page without a session", {
+  df <- data.frame(x = 1:50)
+  props <- get_props(DataGridServer(
+    "g",
+    columns = list(list(field = "x", type = "number")),
+    getRows = function(params) processGridParams(df, params),
+    initialPageSize = 25
+  ))
+  expect_length(props$rows, 25)
+  expect_equal(props$rowCount, 50L)
+})
+
+test_that("DataGridServer warns once that rowCount is deprecated", {
+  assign("warned_rowcount", FALSE, envir = muiDataGrid:::.state)
+  on.exit(assign("warned_rowcount", TRUE, envir = muiDataGrid:::.state))
+  df <- data.frame(x = 1:5)
+  expect_warning(DataGridServer("g", rows = df, rowCount = 5L), "deprecated")
+  expect_no_warning(DataGridServer("g", rows = df, rowCount = 5L))
 })
 
 test_that("DataGridServer passes loading prop", {
