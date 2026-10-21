@@ -1,61 +1,101 @@
 url: https://felixluginbuhl.com/muiDataGrid
 template:
   bootstrap: 5
-  bootswatch: litera
+  # Look of felixluginbuhl.com (cream paper, warm ink, DM Sans text, Space
+  # Grotesk headings), as in muiCharts and BFS, with the blue grey of the hex
+  # logo as primary.
   bslib:
-    primary: "#3399ff"
+    primary: "#546E7A"
+    bg: "#FAF6F1"
+    fg: "#3D3229"
+    base_font: {google: "DM Sans"}
+    heading_font: {google: {family: "Space Grotesk", wght: [500, 600, 700]}}
+    code_font: {google: "Fira Code"}
+    border-color: "rgba(28, 25, 23, 0.12)"
+    # Dark mode (light-switch below): the dark scheme of felixluginbuhl.com.
+    body-bg-dark: "#14120F"
+    body-color-dark: "#E8E2DC"
+    body-emphasis-color-dark: "#F5F1EC"
+    body-secondary-color-dark: "#AFA294"
+    body-secondary-bg-dark: "#1C1917"
+    body-tertiary-bg-dark: "#1C1917"
+    border-color-dark: "rgba(232, 226, 220, 0.12)"
+    link-color-dark: "#B0BEC5"
+    link-hover-color-dark: "#CFD8DC"
+  theme: arrow-dark
+  light-switch: true
+  opengraph:
+    image:
+      src: man/figures/card.png
+      alt: "muiDataGrid: interactive MUI X data tables for Shiny and Quarto"
+  includes:
+    # Roboto for the live grids of the articles (MUI is designed for it).
+    # The rest of the site styles are in pkgdown/extra.css.
+    in_header: |
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap">
 
 authors:
   Felix Luginbuhl:
     href: "https://felixluginbuhl.com"
 
+# Footer: the package family (the honeycomb of felixluginbuhl.com, in small)
+# and pkgdown's "Developed by" line. The family is a plain link here;
+# pkgdown/extra.js fills it from felixluginbuhl.com/stickers.json, so the
+# list of packages lives in one place. Styles in pkgdown/extra.css.
+footer:
+  structure:
+    left: [family, developed_by]
+    right: built_with
+  components:
+    family: '<nav class="hexfamily" aria-label="More R packages"><a href="https://felixluginbuhl.com/#packages">More R packages</a></nav>'
+
 llm-docs: true
 
 navbar:
-  left:
-  - text: Home
-    href: index.html
-  - text: Reference
-    href: reference/index.html
-  - text: Articles
-    menu:
-    - text: Layout
-      href: articles/layout.html
-    - text: Column Definition
-      href: articles/column-definition.html
-    - text: Column Dimensions
-      href: articles/column-dimensions.html
-    - text: Row Definition
-      href: articles/row-definition.html
-    - text: Row Height
-      href: articles/row-height.html
-    - text: Row Spanning
-      href: articles/row-spanning.html
-    - text: Styling basics
-      href: articles/styling-basics.html
-    - text: Localization
-      href: articles/localization.html
-    - text: Custom with React JS
-      href: articles/custom-react-js.html
-    - text: llms.txt
-      href: llms.txt
-  - text: R Shiny
-    menu:
-    - text: Bootstrap CSS Conflicts
-      href: articles/bootstrap-css-conflicts.html
-    - text: Row selection with shiny
-      href: articles/row-selection.html
-    - text: Server-Side Data
-      href: articles/server-side-data.html
-  - text: News
-    href: news/index.html
-
-  right:
-   - icon: fa-linkedin
-     href: https://www.linkedin.com/in/felixluginbuhl
-   - icon: fa-twitter
-     href: https://twitter.com/FelixLuginbuhl
-   - icon: fa-github
-     href: https://github.com/lgnbhl/muiDataGrid
-   - icon: fa-home
-     href: http://felixluginbuhl.com
+  structure:
+    left: [reference, articles, shiny, news]
+    right: [search, lightswitch, github, homepage]
+  components:
+    articles:
+      text: Articles
+      menu:
+      - text: Layout
+        href: articles/layout.html
+      - text: Column Definition
+        href: articles/column-definition.html
+      - text: Column Dimensions
+        href: articles/column-dimensions.html
+      - text: Row Definition
+        href: articles/row-definition.html
+      - text: Row Height
+        href: articles/row-height.html
+      - text: Row Spanning
+        href: articles/row-spanning.html
+      - text: Styling basics
+        href: articles/styling-basics.html
+      - text: Localization
+        href: articles/localization.html
+      - text: Custom with React JS
+        href: articles/custom-react-js.html
+      - text: llms.txt
+        href: llms.txt
+    shiny:
+      text: R Shiny
+      menu:
+      - text: Bootstrap CSS Conflicts
+        href: articles/bootstrap-css-conflicts.html
+      - text: Row selection with shiny
+        href: articles/row-selection.html
+      - text: Server-Side Data
+        href: articles/server-side-data.html
+    news:
+      text: News
+      href: news/index.html
+    github:
+      icon: fa-github
+      href: https://github.com/lgnbhl/muiDataGrid
+      aria-label: GitHub
+    homepage:
+      icon: fa-home
+      href: https://felixluginbuhl.com
+      aria-label: Felix Luginbuhl's website

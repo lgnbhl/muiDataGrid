@@ -9,6 +9,5 @@ inst/doc
 .DS_Store
 .claude
 /.quarto/
-pkgdown
 CRAN-SUBMISSION
 dev
