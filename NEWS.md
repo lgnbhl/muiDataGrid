@@ -1,4 +1,4 @@
-# muiDataGrid (development version)
+# muiDataGrid 0.2.0
 
 ## Breaking changes
 
