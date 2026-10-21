@@ -1,15 +1,24 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { DataGrid, useGridApiRef, gridColumnVisibilityModelSelector } from '@mui/x-data-grid';
+import React, { useEffect, useRef, useMemo } from 'react';
+import {
+  DataGrid, useGridApiRef, gridColumnVisibilityModelSelector, gridFilterModelSelector,
+} from '@mui/x-data-grid';
+
+// Server-side grid backed by MUI's own data source: MUI owns the pagination,
+// sort, and filter state, resets to the first page, coalesces changes into one
+// request, shows the loading overlay, and drops stale responses. This
+// component only bridges MUI's getRows() promise to Shiny: each request is
+// posted as input$<inputId> with a request_id, R re-renders with that page,
+// and DataGridServer() echoes the id back as `requestId` to resolve it.
+
+// How long a request waits for a replacement before it is posted to R (see
+// getRows). Small next to a Shiny round-trip.
+const COALESCE_MS = 50;
 
 // The filter items MUI actually applies: a known operator on a known column,
 // with a value unless the operator takes none (isEmpty). Mirrors MUI's
-// gridFilterActiveItemsSelector, but runs on our controlled model so it never
-// lags a render behind the grid's internal state. Without the grid API every
-// item counts as active, so nothing is ever dropped.
+// gridFilterActiveItemsSelector.
 function activeFilterItems(filterModel, api) {
-  const items = filterModel.items ?? [];
-  if (!api) return items;
-  return items.filter((item) => {
+  return (filterModel.items ?? []).filter((item) => {
     const column = item.field ? api.getColumn(item.field) : undefined;
     const operator = column?.filterOperators?.find((op) => op.value === item.operator);
     if (!operator) return false;
@@ -26,162 +35,132 @@ function activeFilterItems(filterModel, api) {
 // processGridParams() searches the same columns; undefined when there is no
 // quick filter to apply.
 function quickFilterFields(filterModel, apiRef) {
-  const api = apiRef.current;
-  if (!api || !filterModel.quickFilterValues?.some(Boolean)) return undefined;
+  if (!filterModel.quickFilterValues?.some(Boolean)) return undefined;
   const excludeHidden = filterModel.quickFilterExcludeHiddenColumns ?? true;
   const visibility = gridColumnVisibilityModelSelector(apiRef);
-  return api.getAllColumns()
+  return apiRef.current.getAllColumns()
     .filter((col) => !excludeHidden || visibility[col.field] !== false)
     .filter((col) => col.getApplyQuickFilterFn?.('1', col, apiRef) != null)
     .map((col) => ({ field: col.field, type: col.type ?? 'string' }));
 }
 
-function ServerSideDataGrid({ inputId, initialState, filterDebounce, ...otherProps }) {
+// What R's result depends on. Inactive filter items (an operator picked but no
+// value yet, the row the filter panel adds on open) filter nothing, so a
+// request that differs only in those is answered without asking R.
+function signature({ paginationModel, sortModel, filterModel }, apiRef) {
+  return JSON.stringify([
+    paginationModel,
+    sortModel,
+    activeFilterItems(filterModel, apiRef.current),
+    filterModel.logicOperator ?? 'and',
+    quickFilterFields(filterModel, apiRef) ?? [],
+    filterModel.quickFilterValues?.filter(Boolean) ?? [],
+    filterModel.quickFilterLogicOperator ?? 'and',
+  ]);
+}
+
+function ServerSideDataGrid({
+  inputId, rows, rowCount, requestId, loading, filterDebounce, ...otherProps
+}) {
   const apiRef = useGridApiRef();
-  const [gridState, setGridState] = useState({
-    paginationModel: initialState?.pagination?.paginationModel ?? { page: 0, pageSize: 100 },
-    sortModel: initialState?.sorting?.sortModel ?? [],
-    filterModel: initialState?.filter?.filterModel ?? { items: [] },
-  });
+  // Latest page R rendered, read when a request can be answered locally.
+  const served = useRef({ rows, rowCount });
+  // Signature of the params `served` answers; null until the first request.
+  const servedSignature = useRef(null);
+  const firstRequest = useRef(true);
+  const pending = useRef(new Map()); // request id -> { resolve, sig }
+  const lastId = useRef(0);
+  const sendTimer = useRef(null);
 
-  // pagination/sorting/filter are controlled here (seeded into gridState above),
-  // so strip them and forward only the rest of initialState — column visibility,
-  // density, pinned columns, etc. Otherwise those settings would be silently
-  // dropped in server mode, and re-passing the controlled keys would trigger
-  // MUI's controlled-vs-initialState warning.
-  const forwardedInitialState = useMemo(() => {
-    if (!initialState) return undefined;
-    const { pagination, sorting, filter, ...rest } = initialState;
-    return Object.keys(rest).length > 0 ? rest : undefined;
-  }, [initialState]);
+  useEffect(() => () => clearTimeout(sendTimer.current), []);
 
-  const debounceTimer = useRef(null);
-  const filterDebounceRef = useRef(filterDebounce ?? 300);
-  // Latest state, read by the debounced send so it never posts a stale closure.
-  const stateRef = useRef(gridState);
-  stateRef.current = gridState;
-  // Signatures of the state R last saw (null before mount), so the send effect
-  // can tell a filter change (debounced) from a pagination/sort change (sent
-  // now) and ignore changes that alter neither.
-  const lastSeen = useRef(null);
+  const dataSource = useMemo(() => ({
+    getRows: (params) => new Promise((resolve) => {
+      const sig = signature(params, apiRef);
+      const answerLocally = () => {
+        servedSignature.current = sig;
+        resolve(served.current);
+      };
+      // Static documents have no Shiny: only the first page R rendered exists.
+      if (!window.Shiny?.setInputValue) {
+        answerLocally();
+        return;
+      }
+      // R's first render served the initial page, unsorted and unfiltered (see
+      // DataGridServer); only an initialState sort or filter needs a request.
+      if (firstRequest.current) {
+        firstRequest.current = false;
+        const { sortModel, filterModel } = params;
+        if (sortModel.length === 0 &&
+          activeFilterItems(filterModel, apiRef.current).length === 0 &&
+          !filterModel.quickFilterValues?.some(Boolean)) {
+          answerLocally();
+          return;
+        }
+      } else if (sig === servedSignature.current && pending.current.size === 0) {
+        answerLocally();
+        return;
+      }
+      lastId.current += 1;
+      pending.current.set(lastId.current, { resolve, sig });
+      // A sort or filter change away from page 0 makes MUI request twice: once
+      // for the old page, then (a few ms later, after it resets to page 0) for
+      // the new one. Holding each request briefly lets the second replace the
+      // first, so R renders once. A replaced request stays pending and is
+      // resolved, as stale, by the answer to the newer one.
+      clearTimeout(sendTimer.current);
+      const payload = {
+        pagination_model: params.paginationModel,
+        sort_model: params.sortModel,
+        filter_model: params.filterModel,
+        request_id: lastId.current,
+      };
+      const fields = quickFilterFields(params.filterModel, apiRef);
+      if (fields) payload.quick_filter_fields = fields;
+      sendTimer.current = setTimeout(() => {
+        window.Shiny.setInputValue(inputId, payload, { priority: 'event' });
+      }, COALESCE_MS);
+    }),
+  }), [apiRef, inputId]);
 
-  // Keep debounce delay in sync if the prop ever changes
-  useEffect(() => { filterDebounceRef.current = filterDebounce ?? 300; }, [filterDebounce]);
-
-  // Cancel any pending debounce on unmount
-  useEffect(() => () => clearTimeout(debounceTimer.current), []);
-
-  // Hiding or showing a column changes which columns the quick filter searches;
-  // a fresh state object makes the send effect re-evaluate.
-  useEffect(() => apiRef.current?.subscribeEvent('columnVisibilityModelChange', () => {
-    setGridState((prev) => ({ ...prev }));
-  }), [apiRef]);
-
-  // The part of the filter model R's result depends on. Inactive items (an
-  // operator picked but no value yet, the row the filter panel adds on open)
-  // filter nothing, so they neither reset the page nor trigger a round-trip.
-  const effectiveFilter = useCallback((filterModel) => JSON.stringify({
-    ...filterModel,
-    items: activeFilterItems(filterModel, apiRef.current),
-    quick_filter_fields: quickFilterFields(filterModel, apiRef),
-  }), [apiRef]);
-
-  const send = useCallback(() => {
-    const { paginationModel, sortModel, filterModel } = stateRef.current;
-    const payload = {
-      pagination_model: paginationModel,
-      sort_model: sortModel,
-      filter_model: filterModel,
-    };
-    const fields = quickFilterFields(filterModel, apiRef);
-    if (fields) payload.quick_filter_fields = fields;
-    window.Shiny?.setInputValue?.(inputId, payload, { priority: 'event' });
-  }, [apiRef, inputId]);
-
-  // Send state to R whenever pagination, sort, or the effective filter changes
-  // (skip initial mount). Filter changes are debounced to avoid a round-trip per
-  // keystroke; pagination and sort changes are sent immediately. The filterModel
-  // itself is updated synchronously in its handler so the controlled grid stays
-  // in sync.
+  // Each R render answers the request it echoes (and any older one Shiny
+  // coalesced into it; MUI ignores those as stale). A render that answers no
+  // pending request (the data changed, or another reactive re-ran) updates the
+  // current page in place, unless a newer request is still on its way.
   useEffect(() => {
-    const seen = {
-      filter: effectiveFilter(gridState.filterModel),
-      other: JSON.stringify([gridState.paginationModel, gridState.sortModel]),
-    };
-    const prev = lastSeen.current;
-    lastSeen.current = seen;
-    if (prev === null) {
-      // If an initial sort or filter was supplied (via initialState), R must
-      // learn about it now. Otherwise the grid header shows the sort arrow /
-      // filter chip but processGridParams sees params = NULL and returns
-      // unsorted, unfiltered data — a visible mismatch on first paint.
-      const { sortModel, filterModel } = gridState;
-      if (sortModel.length > 0 ||
-        activeFilterItems(filterModel, apiRef.current).length > 0 ||
-        filterModel.quickFilterValues?.some(Boolean)) {
-        send();
-      }
-      return;
+    served.current = { rows, rowCount };
+    const answered = pending.current.get(requestId);
+    if (answered) {
+      servedSignature.current = answered.sig;
+      pending.current.forEach(({ resolve }, id) => {
+        if (id <= requestId) {
+          resolve(served.current);
+          pending.current.delete(id);
+        }
+      });
+    } else if (pending.current.size === 0 && servedSignature.current !== null) {
+      apiRef.current?.setRows(rows ?? []);
+      if (rowCount != null) apiRef.current?.setRowCount(rowCount);
     }
-    if (seen.filter !== prev.filter) {
-      clearTimeout(debounceTimer.current);
-      debounceTimer.current = setTimeout(send, filterDebounceRef.current);
-    } else if (seen.other !== prev.other) {
-      clearTimeout(debounceTimer.current);
-      send();
+  }, [rows, rowCount, requestId, apiRef]);
+
+  // Hiding or showing a column changes which columns the quick filter searches,
+  // but MUI does not refetch on it.
+  useEffect(() => apiRef.current?.subscribeEvent('columnVisibilityModelChange', () => {
+    const filterModel = gridFilterModelSelector(apiRef);
+    if (filterModel.quickFilterValues?.some(Boolean)) {
+      apiRef.current.dataSource.fetchRows();
     }
-  }, [gridState, effectiveFilter, send, apiRef]);
-
-  const handlePaginationModelChange = useCallback((newPaginationModel) => {
-    setGridState((prev) => ({ ...prev, paginationModel: newPaginationModel }));
-  }, []);
-
-  // Reset to page 0 when sort changes. MUI can fire this with an unchanged
-  // model (e.g. re-clicking the active column past its sort cycle); bail out
-  // then so we neither yank the user back to page 0 nor send a redundant
-  // round-trip to R.
-  const handleSortModelChange = useCallback((newSortModel) => {
-    setGridState((prev) => {
-      if (JSON.stringify(prev.sortModel) === JSON.stringify(newSortModel)) {
-        return prev;
-      }
-      return {
-        ...prev,
-        sortModel: newSortModel,
-        paginationModel: { ...prev.paginationModel, page: 0 },
-      };
-    });
-  }, []);
-
-  // Update the controlled filterModel synchronously (so typing in the filter
-  // panel is never dropped); the send effect debounces the R round-trip. Only a
-  // change to the effective filter returns to page 0, so opening the filter
-  // panel or picking an operator does not yank paging users back to the start.
-  const handleFilterModelChange = useCallback((newFilterModel) => {
-    setGridState((prev) => {
-      if (JSON.stringify(prev.filterModel) === JSON.stringify(newFilterModel)) {
-        return prev;
-      }
-      const reset = effectiveFilter(prev.filterModel) !== effectiveFilter(newFilterModel);
-      return {
-        ...prev,
-        filterModel: newFilterModel,
-        paginationModel: reset ? { ...prev.paginationModel, page: 0 } : prev.paginationModel,
-      };
-    });
-  }, [effectiveFilter]);
+  }), [apiRef]);
 
   return (
     <DataGrid
       {...otherProps}
+      {...(loading != null && { loading })}
       apiRef={apiRef}
-      initialState={forwardedInitialState}
-      paginationModel={gridState.paginationModel}
-      onPaginationModelChange={handlePaginationModelChange}
-      sortModel={gridState.sortModel}
-      onSortModelChange={handleSortModelChange}
-      filterModel={gridState.filterModel}
-      onFilterModelChange={handleFilterModelChange}
+      dataSource={dataSource}
+      dataSourceCache={null}
+      filterDebounceMs={filterDebounce ?? 300}
     />
   );
 }

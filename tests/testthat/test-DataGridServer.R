@@ -357,47 +357,31 @@ test_that("DataGridServer messages when used without a Shiny session in knitr", 
   )
 })
 
-test_that("DataGridServer rejects two live outputs sharing one inputId", {
-  df <- data.frame(name = c("a", "b"), height = c(1, 2))
+test_that("DataGridServer echoes the grid's request_id as requestId", {
+  # The grid resolves each data request when R renders the matching id.
+  df <- data.frame(name = paste("Row", 1:30), value = 1:30)
   session <- shiny::MockShinySession$new()
-  current <- "outA"
-  testthat::local_mocked_bindings(
-    getCurrentOutputInfo = function(...) list(name = current),
-    .package = "shiny"
-  )
-  shiny::withReactiveDomain(session, {
-    current <- "outA"
-    DataGridServer("grid", rows = df, rowCount = 2L)
-    # A different output claiming the same inputId in the same flush collides.
-    current <- "outB"
-    expect_error(
-      DataGridServer("grid", rows = df, rowCount = 2L),
-      "already used by output"
-    )
-  })
+  session$setInputs(grid = list(
+    pagination_model = list(page = 1, pageSize = 25),
+    sort_model = list(), filter_model = list(items = list()),
+    request_id = 7L
+  ))
+  tag <- shiny::withReactiveDomain(session, shiny::isolate(
+    DataGridServer("grid", rows = df, initialPageSize = 25)
+  ))
+  props <- get_props(tag)
+  expect_equal(props$requestId, 7L)
+  expect_equal(vapply(props$rows, function(r) r$value, integer(1)), 26:30)
+
+  # Manual mode echoes it too.
+  tag <- shiny::withReactiveDomain(session, shiny::isolate(
+    DataGridServer("grid", rows = df[1:5, ], rowCount = 30L)
+  ))
+  expect_equal(get_props(tag)$requestId, 7L)
 })
 
-test_that("DataGridServer frees an inputId once its owning output stops rendering", {
-  # Regression: a removed/replaced output must not permanently reserve its
-  # inputId. The end-of-flush registry reset is what releases it; simulate that
-  # reset, then a new output reusing the inputId must succeed.
-  df <- data.frame(name = c("a", "b"), height = c(1, 2))
-  session <- shiny::MockShinySession$new()
-  current <- "outA"
-  testthat::local_mocked_bindings(
-    getCurrentOutputInfo = function(...) list(name = current),
-    .package = "shiny"
-  )
-  shiny::withReactiveDomain(session, {
-    current <- "outA"
-    DataGridServer("grid", rows = df, rowCount = 2L)
-    expect_equal(session$userData$.datagrid_input_registry[["grid"]], "outA")
-    # Emulate the scheduled end-of-flush reset.
-    session$userData$.datagrid_input_registry <- list()
-    session$userData$.datagrid_registry_reset_scheduled <- NULL
-    # outA is gone; outC reuses "grid" on a later flush — must not error.
-    current <- "outC"
-    expect_error(DataGridServer("grid", rows = df, rowCount = 2L), NA)
-    expect_equal(session$userData$.datagrid_input_registry[["grid"]], "outC")
-  })
+test_that("DataGridServer sends no requestId before the grid has requested", {
+  df <- data.frame(name = c("a", "b"))
+  tag <- DataGridServer("grid", rows = df)
+  expect_null(get_props(tag)$requestId)
 })

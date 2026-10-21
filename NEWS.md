@@ -1,5 +1,18 @@
 # muiDataGrid (development version)
 
+* `DataGridServer()` is now built on MUI X Data Grid's own server-side data
+  source instead of a custom state layer. The R API is unchanged. MUI now owns
+  pagination, sort, and filter state and the reset to the first page; slow or
+  out-of-order responses can no longer show a stale page; and the grid shows
+  its loading overlay automatically while it waits for R, so the `loading`
+  argument is rarely needed. `input$<inputId>` gains a `request_id`, which
+  `DataGridServer()` sends back automatically.
+* `filterDebounce` now sets MUI's `filterDebounceMs`: the delay after typing
+  in the filter panel (still 300 ms by default). The toolbar quick filter
+  keeps its own debounce.
+* `DataGridServer()` no longer errors when two grids share one `inputId`.
+  As with any Shiny input, each grid needs its own `inputId`.
+
 * Server-side filtering fixes and additions:
   * The boolean `is` filter now matches logical columns (MUI sends
     `"true"`/`"false"`, which previously matched nothing against R's

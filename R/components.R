@@ -551,6 +551,8 @@ processGridParams <- function(data, params, pageSize = 100L) {
 #'     pass a pre-sliced page (manual mode); omit it to let the full
 #'     \code{rows} be paginated automatically.
 #'   \item Changing the sort or any filter resets the grid to the first page.
+#'   \item Each \code{DataGridServer()} needs its own \code{inputId}; two grids
+#'     sharing one would overwrite each other's state, as with any Shiny input.
 #'   \item Unrecognized filter operators pass all rows through with a warning
 #'     (see \code{\link{processGridParams}}).
 #'   \item When \code{rows} has no \code{id} column, ids are generated
@@ -578,7 +580,8 @@ processGridParams <- function(data, params, pageSize = 100L) {
 #'   \code{logicOperator}, and — when the toolbar quick filter is used —
 #'   \code{quickFilterValues}). While the quick filter is active the list also
 #'   holds \code{quick_filter_fields}: the columns it searches, each a list
-#'   with \code{field} and \code{type}.
+#'   with \code{field} and \code{type}. \code{request_id} identifies the
+#'   grid's data request; \code{DataGridServer()} sends it back automatically.
 #' @param rows A data.frame. Pass the \strong{full} dataset (like
 #'   \code{DataGrid()}) and let \code{DataGridServer()} handle pagination
 #'   automatically, or pass a pre-sliced page together with an explicit
@@ -590,8 +593,8 @@ processGridParams <- function(data, params, pageSize = 100L) {
 #'   already paginated and \code{rowCount} is used as the total row count
 #'   (manual mode). When \code{NULL} (default), pagination is handled
 #'   automatically from the full \code{rows} dataset.
-#' @param loading Logical. Whether to show the loading indicator. If
-#'   \code{NULL}, MUI defaults to \code{FALSE}.
+#' @param loading Logical. Usually not needed: the grid shows its loading
+#'   overlay automatically while it waits for R. \code{TRUE} forces it on.
 #' @param initialPageSize Integer. Convenience for setting the initial page
 #'   size. Builds MUI's \code{initialState} prop. If \code{NULL}, MUI defaults
 #'   to 100. Also sets the page size for the first automatic render before the
@@ -601,8 +604,10 @@ processGridParams <- function(data, params, pageSize = 100L) {
 #'   governs both the grid and the first automatic render.
 #' @param pageSizeOptions Integer vector. Available page size options. If
 #'   \code{NULL}, MUI defaults to \code{c(25, 50, 100)}.
-#' @param filterDebounce Integer. Milliseconds to debounce filter input before
-#'   sending state to R. If \code{NULL}, defaults to 300 ms.
+#' @param filterDebounce Integer. Milliseconds the grid waits after typing in
+#'   the filter panel before requesting data from R (MUI's
+#'   \code{filterDebounceMs}). If \code{NULL}, defaults to 300 ms. The toolbar
+#'   quick filter has its own debounce.
 #' @param ... Additional props passed directly to the MUI DataGrid component.
 #'   Note: \code{paginationMode}, \code{sortingMode}, \code{filterMode}, and
 #'   \code{pagination} are set automatically and should not be overridden.
@@ -698,39 +703,6 @@ DataGridServer <- function(
       "For static documents use DataGrid() instead."
     )
   }
-  if (!is.null(session)) {
-    # Detect two *different live* outputs sharing one inputId (their Shiny
-    # inputs would otherwise clobber each other). The registry is reset at the
-    # end of every flush (scheduled below), so entries owned by outputs that are
-    # no longer rendered — e.g. removed via removeUI() or replaced by a
-    # renderUI() swap — do not linger and falsely reject a freed inputId on a
-    # later flush. Genuine duplicates still collide because conflicting outputs
-    # render within the same flush.
-    registry <- session$userData$.datagrid_input_registry
-    if (is.null(registry)) registry <- list()
-    current_output <- shiny::getCurrentOutputInfo()$name
-    claimed_by <- registry[[inputId]]
-    if (!is.null(claimed_by) && !identical(claimed_by, current_output)) {
-      stop(
-        'inputId "', inputId, '" is already used by output "', claimed_by, '". ',
-        "Each DataGridServer() must have a unique inputId."
-      )
-    }
-    registry[[inputId]] <- current_output
-    session$userData$.datagrid_input_registry <- registry
-    # Schedule a single reset for the end of this flush (guarded so we register
-    # at most one callback per flush regardless of how many grids render).
-    if (is.null(session$userData$.datagrid_registry_reset_scheduled)) {
-      session$userData$.datagrid_registry_reset_scheduled <- TRUE
-      session$onFlushed(
-        function() {
-          session$userData$.datagrid_input_registry <- list()
-          session$userData$.datagrid_registry_reset_scheduled <- NULL
-        },
-        once = TRUE
-      )
-    }
-  }
   # Manual mode (rowCount supplied) expects a single pre-sliced page. A page
   # can never contain more rows than the total, so nrow(rows) > rowCount almost
   # always means the full, unsliced dataset was passed by mistake.
@@ -749,11 +721,11 @@ DataGridServer <- function(
   if (is.null(rowCount) && !is.null(rows)) {
     params <- if (!is.null(session)) session$input[[inputId]] else NULL
     # Before the grid has sent any state (params NULL), slice the exact page the
-    # React component will display. It seeds its controlled paginationModel from
-    # the initialState prop it receives — the user's own (via ...) or the one
-    # built from initialPageSize — falling back to MUI's defaults (page 0,
-    # pageSize 100); see ServerSideDataGrid.jsx. Mirroring that here keeps the
-    # served rows and the pagination footer consistent on first paint.
+    # grid will display: MUI seeds its pagination from the initialState prop —
+    # the user's own (via ...) or the one built from initialPageSize — falling
+    # back to its defaults (page 0, pageSize 100). The grid answers its first
+    # data request with this page instead of asking R again (see
+    # ServerSideDataGrid.jsx), so it must match.
     init_pm <- if (user_initial_state) {
       dots$initialState$pagination$paginationModel
     } else if (!is.null(initialPageSize)) {
@@ -772,11 +744,18 @@ DataGridServer <- function(
     columns <- .fill_column_types(columns, rows)
   }
   rows <- .inject_id(rows)
+  # Echo the id of the grid's latest data request: the grid resolves that
+  # request with these rows (see ServerSideDataGrid.jsx). Read without a
+  # reactive dependency so manual mode re-renders only on what the user reads.
+  request_id <- if (!is.null(session)) {
+    shiny::isolate(session$input[[inputId]])$request_id
+  }
   base <- list(
     inputId = inputId,
     rows = rows,
     columns = columns,
     rowCount = if (!is.null(rowCount)) as.integer(rowCount),
+    requestId = request_id,
     loading = loading,
     pageSizeOptions = if (!is.null(pageSizeOptions)) {
       as.list(as.integer(pageSizeOptions))

@@ -25,7 +25,8 @@ sort items), and \code{filter_model} (list with \code{items},
 \code{logicOperator}, and — when the toolbar quick filter is used —
 \code{quickFilterValues}). While the quick filter is active the list also
 holds \code{quick_filter_fields}: the columns it searches, each a list
-with \code{field} and \code{type}.}
+with \code{field} and \code{type}. \code{request_id} identifies the
+grid's data request; \code{DataGridServer()} sends it back automatically.}
 
 \item{rows}{A data.frame. Pass the \strong{full} dataset (like
 \code{DataGrid()}) and let \code{DataGridServer()} handle pagination
@@ -41,8 +42,8 @@ already paginated and \code{rowCount} is used as the total row count
 (manual mode). When \code{NULL} (default), pagination is handled
 automatically from the full \code{rows} dataset.}
 
-\item{loading}{Logical. Whether to show the loading indicator. If
-\code{NULL}, MUI defaults to \code{FALSE}.}
+\item{loading}{Logical. Usually not needed: the grid shows its loading
+overlay automatically while it waits for R. \code{TRUE} forces it on.}
 
 \item{initialPageSize}{Integer. Convenience for setting the initial page
 size. Builds MUI's \code{initialState} prop. If \code{NULL}, MUI defaults
@@ -55,8 +56,10 @@ governs both the grid and the first automatic render.}
 \item{pageSizeOptions}{Integer vector. Available page size options. If
 \code{NULL}, MUI defaults to \code{c(25, 50, 100)}.}
 
-\item{filterDebounce}{Integer. Milliseconds to debounce filter input before
-sending state to R. If \code{NULL}, defaults to 300 ms.}
+\item{filterDebounce}{Integer. Milliseconds the grid waits after typing in
+the filter panel before requesting data from R (MUI's
+\code{filterDebounceMs}). If \code{NULL}, defaults to 300 ms. The toolbar
+quick filter has its own debounce.}
 
 \item{...}{Additional props passed directly to the MUI DataGrid component.
 Note: \code{paginationMode}, \code{sortingMode}, \code{filterMode}, and
@@ -90,6 +93,8 @@ knowing about:
     pass a pre-sliced page (manual mode); omit it to let the full
     \code{rows} be paginated automatically.
   \item Changing the sort or any filter resets the grid to the first page.
+  \item Each \code{DataGridServer()} needs its own \code{inputId}; two grids
+    sharing one would overwrite each other's state, as with any Shiny input.
   \item Unrecognized filter operators pass all rows through with a warning
     (see \code{\link{processGridParams}}).
   \item When \code{rows} has no \code{id} column, ids are generated

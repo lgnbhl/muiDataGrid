@@ -51,11 +51,11 @@ With **server-side data**, only the rows for the current page are sent to the br
 
 ## How it works
 
-`DataGridServer()` is a Shiny-only component. It uses a custom React component that:
+`DataGridServer()` is a Shiny-only component built on MUI's own server-side [data source](https://mui.com/x/react-data-grid/server-side-data/):
 
-1. Manages pagination, sort, and filter state internally in the browser.
-2. Sends the current state to R via `input$<inputId>` whenever the user changes page, sorts a column, or applies a filter.
-3. R processes the data and sends back only the matching rows for the current page.
+1. MUI manages pagination, sort, and filter state in the browser, and shows a loading overlay while it waits for data.
+2. Whenever the user changes page, sorts a column, or applies a filter, the grid sends the request to R via `input$<inputId>`.
+3. R processes the data and re-renders the grid with only the matching rows for the current page, which answer that request.
 
 ## Automatic vs manual mode
 
@@ -122,8 +122,8 @@ Renders a DataGrid with server-side pagination, sorting, and filtering.
 | `rowCount` | When provided, `rows` is treated as already paginated and `rowCount` is the total. When NULL (default), pagination is handled automatically from the full `rows` dataset. |
 | `initialPageSize` | Initial rows per page. Must be included in `pageSizeOptions`. Defaults to MUI's default (100) if NULL. |
 | `pageSizeOptions` | Available page size choices. Defaults to MUI's default `c(25, 50, 100)` if NULL. |
-| `filterDebounce` | Milliseconds to wait after typing before sending filter state to R. Defaults to 300 ms if NULL. |
-| `loading` | Show a loading indicator (default FALSE). |
+| `filterDebounce` | Milliseconds to wait after typing in the filter panel before requesting data from R. Defaults to 300 ms if NULL. |
+| `loading` | Usually not needed: the loading overlay shows automatically while the grid waits for R. `TRUE` forces it on. |
 | `...` | Additional props passed to the MUI DataGrid. |
 
 ### `processGridParams()`
@@ -198,34 +198,9 @@ server <- function(input, output, session) {
 
 ## Loading indicator
 
-For manual mode, the grid can show a loading overlay while data is being fetched. Use a `reactiveVal` to track the loading state:
+The grid shows a loading overlay automatically from the moment it requests a page until R has rendered it, in both modes. Nothing needs to be wired up, which matters most when the data source is slow (e.g. a database query or API call). If R re-renders the grid for another reason, for example because the underlying data changed, the current page updates in place.
 
-```r
-server <- function(input, output, session) {
-  loading <- reactiveVal(FALSE)
-
-  grid_data <- reactive({
-    loading(TRUE)
-    on.exit(loading(FALSE))
-    result <- processGridParams(all_data, input$grid_params, pageSize = 50L)
-    result
-  })
-
-  output$grid <- renderReact({
-    result <- grid_data()
-    DataGridServer(
-      inputId = "grid_params",
-      rows = result$rows,
-      rowCount = result$rowCount,
-      loading = loading(),
-      initialPageSize = 50L,
-      pageSizeOptions = c(50L, 100L)
-    )
-  })
-}
-```
-
-This is most useful when the data source is slow (e.g. a database query or API call).
+Pass `loading = TRUE` only to force the overlay on, for instance while your app loads data before the first page exists.
 
 ## Reading grid state
 
@@ -235,6 +210,7 @@ The grid state is available in `input$<inputId>` as a list with these elements:
 - `sort_model`: list of sort items, each with `field` and `sort` ("asc" or "desc")
 - `filter_model`: list with `items`, each containing `field`, `operator`, and `value`; `logicOperator` ("and" or "or"); and, when the toolbar quick filter is used, `quickFilterValues`
 - `quick_filter_fields`: only while the quick filter is active, the columns it searches, each with `field` and `type`. `processGridParams()` uses it; in manual mode, use it to search the same columns in your own query.
+- `request_id`: identifies the grid's data request. `DataGridServer()` sends it back automatically; you never need to handle it.
 
 You can use this to display diagnostics or trigger other reactive logic:
 
