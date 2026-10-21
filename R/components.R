@@ -572,10 +572,10 @@ processGridParams <- function(data, params, pageSize = 100L) {
 #'   \item A running Shiny session is required: in a static document the grid
 #'     renders its first page but pagination, sorting, and filtering have
 #'     nothing to respond to them. Use \code{DataGrid()} for static documents.
-#'   \item \strong{Deprecated:} passing a pre-sliced page in \code{rows}
-#'     together with \code{rowCount}, re-rendered from \code{input$<inputId>}.
-#'     It still works, with a warning once per session; use \code{getRows}
-#'     instead, e.g.
+#'   \item \strong{Defunct:} passing a pre-sliced page in \code{rows} together
+#'     with \code{rowCount}, re-rendered from \code{input$<inputId>}, now
+#'     errors: those rows could belong to another request than the one the
+#'     grid's footer described. Use \code{getRows} instead, e.g.
 #'     \code{getRows = function(params) processGridParams(data, params)}.
 #' }
 #'
@@ -594,8 +594,8 @@ processGridParams <- function(data, params, pageSize = 100L) {
 #' @param columns Column definitions (list of lists). If NULL, auto-generated
 #'   from \code{names(rows)}, with each column's \code{type} inferred from its
 #'   R class (see \code{\link{DataGrid}}). Required with \code{getRows}.
-#' @param rowCount \strong{Deprecated.} Total row count for a pre-sliced page
-#'   in \code{rows}; use \code{getRows} instead.
+#' @param rowCount \strong{Defunct.} Passing it is an error; use
+#'   \code{getRows} instead.
 #' @param loading Logical. Usually not needed: the grid shows its loading
 #'   overlay automatically while it waits for R. \code{TRUE} forces it on.
 #' @param initialPageSize Integer. Convenience for setting the initial page
@@ -658,12 +658,26 @@ DataGridServer <- function(
   getRows = NULL,
   ...
 ) {
+  # Defunct: a pre-sliced page re-rendered from input$<inputId> could show rows
+  # from another request than the one the footer described. Kept as an
+  # argument so old code fails with directions instead of "unused argument".
+  if (!is.null(rowCount)) {
+    stop(
+      "`rowCount` is no longer supported in DataGridServer(). Produce each ",
+      "page with `getRows` instead, e.g. ",
+      "`getRows = function(params) processGridParams(data, params)` (with ",
+      "`columns`), or pass the full data frame as `rows`. See ",
+      "\"Migrating from rowCount\" in vignette(\"server-side-data\", ",
+      "package = \"muiDataGrid\").",
+      call. = FALSE
+    )
+  }
   .validate_rows(rows)
   if (!is.null(getRows)) {
     if (!is.function(getRows)) {
       stop("`getRows` must be a function.", call. = FALSE)
     }
-    if (!is.null(rows) || !is.null(rowCount)) {
+    if (!is.null(rows)) {
       stop(
         "Use either `rows` or `getRows`, not both (`getRows` produces the rows).",
         call. = FALSE
@@ -729,28 +743,13 @@ DataGridServer <- function(
       "For static documents use DataGrid() instead."
     )
   }
-  if (!is.null(rowCount)) {
-    .warn_rowcount_deprecated()
-    # A page can never contain more rows than the total, so nrow(rows) >
-    # rowCount almost always means the full, unsliced dataset was passed.
-    if (!is.null(rows) && nrow(rows) > rowCount) {
-      warning(
-        "rowCount (", rowCount, ") is smaller than nrow(rows) (", nrow(rows),
-        "). With 'rowCount', 'rows' must be a single pre-sliced page. Did you ",
-        "mean to omit 'rowCount' so DataGridServer() pages the full dataset?",
-        call. = FALSE
-      )
-    }
-  }
-
   # How each data request is answered: getRows, or paging the full `rows`.
-  # NULL for the deprecated pre-sliced page (rowCount), whose rows arrive by
-  # re-rendering, and for a grid without data.
+  # NULL for a grid without data.
   fetch <- if (!is.null(getRows)) {
     function(params) {
       .check_page(shiny::withReactiveDomain(session, shiny::isolate(getRows(params))))
     }
-  } else if (is.null(rowCount) && !is.null(rows)) {
+  } else if (!is.null(rows)) {
     full <- rows
     function(params) {
       .slice_page(
@@ -798,19 +797,12 @@ DataGridServer <- function(
     columns <- .fill_column_types(columns, rows)
   }
   rows <- .inject_id(rows)
-  # Deprecated pre-sliced page: echo the id of the grid's latest request, which
-  # the grid resolves with these rows (see ServerSideDataGrid.jsx). Read
-  # without a reactive dependency so only what the user reads re-renders.
-  request_id <- if (!is.null(session) && is.null(data_url)) {
-    shiny::isolate(session$input[[inputId]])$request_id
-  }
   base <- list(
     inputId = inputId,
     dataUrl = data_url,
     rows = rows,
     columns = columns,
     rowCount = if (!is.null(rowCount)) as.integer(rowCount),
-    requestId = request_id,
     loading = loading,
     pageSizeOptions = if (!is.null(pageSizeOptions)) {
       as.list(as.integer(pageSizeOptions))
@@ -903,20 +895,4 @@ DataGridServer <- function(
     )
   }
   page
-}
-
-.state <- new.env(parent = emptyenv())
-
-.warn_rowcount_deprecated <- function() {
-  if (isTRUE(.state$warned_rowcount)) {
-    return(invisible())
-  }
-  .state$warned_rowcount <- TRUE
-  warning(
-    "Passing a pre-sliced page to DataGridServer() with `rowCount` is ",
-    "deprecated and will be removed in a future release. Use `getRows` ",
-    "instead, e.g. `getRows = function(params) processGridParams(data, ",
-    "params)`; see ?DataGridServer. This warning is shown once per session.",
-    call. = FALSE
-  )
 }

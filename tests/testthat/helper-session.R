@@ -1,7 +1,3 @@
-# The `rowCount` deprecation warns once per session; many tests still exercise
-# that path, so mark it as already shown. The deprecation test resets it.
-assign("warned_rowcount", TRUE, envir = muiDataGrid:::.state)
-
 # Serve DataGridServer()'s HTTP endpoints in tests. MockShinySession's
 # registerDataObj() is a no-op, so record each request handler instead and
 # return a URL as a real session does. Returns the handler store.

@@ -1,74 +1,82 @@
 # muiDataGrid (development version)
 
-* `DataGridServer()` now answers the grid's data requests over HTTP, through
-  a session-scoped endpoint (`session$registerDataObj()`, as DT does for
-  server-side tables), instead of re-rendering the grid for every page. With
-  `rows`, the call is unchanged; paging no longer re-runs the `renderReact()`
-  that created the grid, and an error while producing a page is reported in
-  the R console instead of breaking the output.
-* New `getRows` argument: a function of the grid's request returning
-  `list(rows, rowCount)` for that page, mirroring MUI's `dataSource.getRows`.
-  Use it to query a database or apply custom logic; `processGridParams()`
-  returns exactly this shape.
-* Deprecated: passing a pre-sliced page to `DataGridServer()` with `rowCount`
-  (re-rendered from `input$<inputId>`). It still works, with a warning once
-  per session; move the logic into `getRows`. See "Migrating from rowCount"
-  in `vignette("server-side-data")`.
+## Breaking changes
 
-* `DataGridServer()` is now built on MUI X Data Grid's own server-side data
-  source instead of a custom state layer. The R API is unchanged. MUI now owns
-  pagination, sort, and filter state and the reset to the first page; slow or
-  out-of-order responses can no longer show a stale page; and the grid shows
-  its loading overlay automatically while it waits for R, so the `loading`
-  argument is rarely needed.
-* In a Shiny session the grid now requests its first page from R as soon as
-  it mounts, instead of R guessing which page it opens on. Grids using
-  `autoPageSize` or an `initialState` with only a `pageSize` now open on the
-  right page; the first page arrives one round-trip later.
+* `DataGridServer()` no longer accepts a pre-sliced page with `rowCount`
+  (the former "manual mode", re-rendered from `input$<inputId>`); passing
+  `rowCount` is now an error that explains the replacement. In that mode the
+  rows came from whatever input R had last read, while the grid's footer
+  described the page the user was on, so a slow or debounced reactive could
+  show rows from a different page or request. Produce each page with the new
+  `getRows` argument instead, e.g.
+  `getRows = function(params) processGridParams(data, params)` (with
+  `columns`), or pass the full data frame as `rows`. See "Migrating from
+  rowCount" in `vignette("server-side-data")`.
 * `input$<inputId>$filter_model$items` now holds only the filters MUI
   applies, as given by MUI's own selector (an item still waiting for a value
   is left out).
-* `filterDebounce` now sets MUI's `filterDebounceMs`: the delay after typing
-  in the filter panel (still 300 ms by default). It is superseded by passing
-  `filterDebounceMs` itself via `...`, which takes precedence. The toolbar
-  quick filter keeps its own debounce.
 * `DataGridServer()` no longer sets `paginationMode`, `sortingMode`,
   `filterMode`, and `pagination`: MUI's data source forces them. Passing them
   still warns that they are ignored.
 * `DataGridServer()` no longer errors when two grids share one `inputId`.
   As with any Shiny input, each grid needs its own `inputId`.
 
-* Server-side filtering fixes and additions:
-  * The boolean `is` filter now matches logical columns (MUI sends
-    `"true"`/`"false"`, which previously matched nothing against R's
-    `TRUE`/`FALSE`).
-  * Filter items with an empty value (cleared text input, all `isAnyOf` chips
-    removed, boolean "any") are now ignored, matching MUI's client-side
-    behavior. Previously an emptied number filter could blank the whole grid.
-  * The toolbar quick filter is now applied server-side, following MUI's
-    rules: it searches only visible columns (sent by the grid as
-    `quick_filter_fields` in `input$<inputId>`), number columns match a term
-    equal to their value, other columns a case-insensitive substring, boolean
-    columns are not searched, and terms combine per
-    `quickFilterLogicOperator` and are ANDed with regular filter items.
-  * Date `is`/`not` filters now work: MUI sends the date picker's value as a
-    timestamp (`"2024-01-15T00:00:00.000Z"`), which previously never matched.
-  * Opening the filter panel or picking an operator before typing a value no
-    longer jumps back to the first page or triggers a round-trip to R; only
-    filter changes that affect the result do.
-  * An initial quick filter supplied via `initialState` is now applied on
-    first render.
-* The first automatic render of `DataGridServer()` now slices the page
-  described by a user-supplied `initialState` (its `paginationModel`), so the
-  served rows match the grid's pagination footer on first paint. When both
-  `initialState` and `initialPageSize` are given, `initialState` wins and
-  `initialPageSize` is ignored (with a warning).
+## New features
+
+* `DataGridServer()` is now built on MUI X Data Grid's own server-side data
+  source. MUI owns pagination, sort, and filter state and the reset to the
+  first page, and shows its loading overlay automatically while it waits for
+  R, so the `loading` argument is rarely needed.
+* Each page is requested over HTTP, through a session-scoped endpoint
+  (`session$registerDataObj()`, as DT does for server-side tables), and
+  answers exactly that request; MUI discards answers to requests it has moved
+  past. With `rows`, the call is unchanged, paging no longer re-runs the
+  `renderReact()` that created the grid, and an error while producing a page
+  is reported in the R console instead of breaking the output.
+* New `getRows` argument: a function of the grid's request returning
+  `list(rows, rowCount)` for that page, mirroring MUI's `dataSource.getRows`.
+  Use it to query a database or apply custom logic; `processGridParams()`
+  returns exactly this shape.
+* The toolbar quick filter is applied server-side, following MUI's rules: it
+  searches only visible columns (sent by the grid as `quick_filter_fields`),
+  number columns match a term equal to their value, other columns a
+  case-insensitive substring, boolean columns are not searched, and terms
+  combine per `quickFilterLogicOperator` and are ANDed with regular filter
+  items. An initial quick filter in `initialState` is applied on first load.
+* `filterDebounceMs` passed via `...` is now honored and takes precedence over
+  `filterDebounce`, which now sets it (still 300 ms by default). The toolbar
+  quick filter keeps its own debounce.
+
+## Bug fixes: wrong rows or counts shown
+
+* Date `is` filters matched no rows ("0 of 0") and `not` matched every row:
+  MUI sends the date picker's value as a timestamp
+  (`"2024-01-15T00:00:00.000Z"`), which never equalled the column value.
+* An `initialState` with only a `pageSize` showed "No results found." under a
+  footer reading e.g. "1–25 of 500".
+* `autoPageSize` was ignored: the grid showed 100 rows instead of the number
+  that fits its height. The grid now requests its first page itself, so it
+  opens on exactly the page its `initialState` and `autoPageSize` describe;
+  the first page arrives one round-trip later.
+* The boolean `is` filter matched no rows on logical columns (MUI sends
+  `"true"`/`"false"`, never equal to R's `"TRUE"`/`"FALSE"`).
+* Filter items with an empty value (cleared text input, all `isAnyOf` chips
+  removed, boolean "any") are ignored, matching MUI. Previously an emptied
+  number filter blanked the whole grid.
+
+## Other changes
+
+* Opening the filter panel or picking an operator before typing a value no
+  longer jumps back to the first page or triggers a round-trip to R.
 * `DataGrid()` and `DataGridServer()` now reject non-data.frame `rows` with a
   clear error, and the duplicate-id warning also covers `NA` ids.
+* When both `initialState` and `initialPageSize` are given, `initialState`
+  wins and `initialPageSize` is ignored (with a warning).
 * `DataGridServer()` messages when called without a running Shiny session
   (interactively or while knitting), pointing to `DataGrid()` for static use.
 * Date filters parse whole columns vectorized (with per-element fallback),
   making date filtering much faster on large data.
+* `DataGridServer()` now imports jsonlite, for its HTTP responses.
 * JavaScript build now uses yarn/`yarn.lock` exclusively, matching CI and
   `reinstall.sh` (removed the stale `package-lock.json`, which was never used
   for builds and had drifted; a `js/.npmrc` prevents npm from recreating it).

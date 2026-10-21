@@ -36,8 +36,8 @@ Leave \code{NULL} when using \code{getRows}.}
 from \code{names(rows)}, with each column's \code{type} inferred from its
 R class (see \code{\link{DataGrid}}). Required with \code{getRows}.}
 
-\item{rowCount}{\strong{Deprecated.} Total row count for a pre-sliced page
-in \code{rows}; use \code{getRows} instead.}
+\item{rowCount}{\strong{Defunct.} Passing it is an error; use
+\code{getRows} instead.}
 
 \item{loading}{Logical. Usually not needed: the grid shows its loading
 overlay automatically while it waits for R. \code{TRUE} forces it on.}
@@ -118,10 +118,10 @@ current behavior. Decisions worth knowing about:
   \item A running Shiny session is required: in a static document the grid
     renders its first page but pagination, sorting, and filtering have
     nothing to respond to them. Use \code{DataGrid()} for static documents.
-  \item \strong{Deprecated:} passing a pre-sliced page in \code{rows}
-    together with \code{rowCount}, re-rendered from \code{input$<inputId>}.
-    It still works, with a warning once per session; use \code{getRows}
-    instead, e.g.
+  \item \strong{Defunct:} passing a pre-sliced page in \code{rows} together
+    with \code{rowCount}, re-rendered from \code{input$<inputId>}, now
+    errors: those rows could belong to another request than the one the
+    grid's footer described. Use \code{getRows} instead, e.g.
     \code{getRows = function(params) processGridParams(data, params)}.
 }
 }
