@@ -21,6 +21,128 @@
   out
 }
 
+# Lower-cased character view of a column or filter value; the case-insensitive
+# string operators compare on this.
+.lc <- function(x) tolower(as.character(x))
+
+.num <- function(x) suppressWarnings(as.numeric(x))
+
+# MUI's date filter input stores a JS Date, which reaches R as a full ISO
+# timestamp ("2024-01-15T00:00:00.000Z"), never as the bare date typed in the
+# input. Detected so `is`/`not` compare calendar days instead of strings, which
+# would never match.
+.is_timestamp <- function(v) {
+  is.character(v) && length(v) == 1 &&
+    grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}T", v)
+}
+
+# Number operators compare numerically on number columns. On any other column
+# they fall back to string comparison (case-insensitive for =/!=, lexical for
+# the orderings), so a stray number-style filter fails soft instead of
+# coercing the whole column to NA.
+.num_op <- function(cmp, fold = FALSE) {
+  function(col, v) {
+    if (is.numeric(col)) {
+      cmp(col, .num(v))
+    } else if (fold) {
+      cmp(.lc(col), .lc(v))
+    } else {
+      cmp(as.character(col), v)
+    }
+  }
+}
+
+# Coerce via character so date columns that reach R as strings (the default
+# when `type = "string"`) compare correctly, not just real Date columns.
+# .as_date() returns NA for unparseable values (column *or* filter value), so a
+# stray non-date fails soft (dropped as no match) instead of aborting a render.
+.date_op <- function(cmp) {
+  function(col, v) cmp(.as_date(col), .as_date(v))
+}
+
+# One entry per supported MUI filter operator: function(col, value) returning a
+# logical keep-vector. NA results count as no match. Operators missing here
+# pass all rows through with a warning (see .apply_sort_filter).
+.filter_ops <- list(
+  contains   = function(col, v) grepl(.lc(v), .lc(col), fixed = TRUE),
+  equals     = function(col, v) .lc(col) == .lc(v),
+  startsWith = function(col, v) startsWith(.lc(col), .lc(v)),
+  endsWith   = function(col, v) endsWith(.lc(col), .lc(v)),
+  isAnyOf    = function(col, v) .lc(col) %in% .lc(v),
+  # `is` serves three MUI column types. boolean: MUI sends "true"/"false"
+  # while a logical column stringifies to "TRUE"/"FALSE", so compare as
+  # logical. date: compare days (see .is_timestamp). singleSelect: exact,
+  # case-sensitive equality (MUI's behavior).
+  is = function(col, v) {
+    if (is.logical(col)) {
+      col == as.logical(v)
+    } else if (.is_timestamp(v)) {
+      .as_date(col) == .as_date(v)
+    } else {
+      as.character(col) == v
+    }
+  },
+  not = function(col, v) {
+    if (.is_timestamp(v)) .as_date(col) != .as_date(v) else .lc(col) != .lc(v)
+  },
+  "="  = .num_op(`==`, fold = TRUE),
+  "!=" = .num_op(`!=`, fold = TRUE),
+  ">"  = .num_op(`>`),
+  ">=" = .num_op(`>=`),
+  "<"  = .num_op(`<`),
+  "<=" = .num_op(`<=`),
+  after      = .date_op(`>`),
+  onOrAfter  = .date_op(`>=`),
+  before     = .date_op(`<`),
+  onOrBefore = .date_op(`<=`),
+  isEmpty    = function(col, v) is.na(col) | as.character(col) == "",
+  isNotEmpty = function(col, v) !is.na(col) & as.character(col) != ""
+)
+
+# Quick filter (the toolbar search box), mirroring MUI's client-side rules:
+# each term must match at least one searchable column, and terms combine per
+# quickFilterLogicOperator ("and" by default). A number column matches a term
+# that parses to its value; other columns match a case-insensitive substring.
+# The grid sends the searchable columns (visible, with a type that supports
+# quick filtering, so never boolean) as `quick_filter_fields`. Without it
+# (params built by hand) every column except `id`, which the auto-generated
+# columns never display, and logical columns is searched. Returns NULL when
+# there is nothing to search for.
+.quick_filter <- function(data, params) {
+  terms <- as.character(unlist(
+    params$filter_model$quickFilterValues %||% list()
+  ))
+  terms <- terms[!is.na(terms) & nzchar(terms)]
+  if (length(terms) == 0) {
+    return(NULL)
+  }
+  sent <- params$quick_filter_fields
+  if (is.null(sent)) {
+    fields <- setdiff(names(data), "id")
+    fields <- fields[!vapply(data[fields], is.logical, logical(1))]
+    num_cols <- vapply(data[fields], is.numeric, logical(1))
+  } else {
+    fields <- vapply(sent, function(x) as.character(x$field), character(1))
+    num_cols <- vapply(sent, function(x) identical(x$type, "number"), logical(1))
+    num_cols <- num_cols[fields %in% names(data)]
+    fields <- fields[fields %in% names(data)]
+  }
+  # Convert each searched column once rather than once per term.
+  cols <- Map(function(nm, is_num) {
+    if (is_num) .num(data[[nm]]) else .lc(data[[nm]])
+  }, fields, num_cols)
+  per_term <- lapply(terms, function(term) {
+    hits <- Map(function(col, is_num) {
+      if (is_num) col == .num(term) else grepl(tolower(term), col, fixed = TRUE)
+    }, cols, num_cols)
+    Reduce(`|`, hits, rep(FALSE, nrow(data)))
+  })
+  logic <- params$filter_model$quickFilterLogicOperator %||% "and"
+  keep <- Reduce(if (identical(logic, "or")) `|` else `&`, per_term)
+  keep[is.na(keep)] <- FALSE
+  keep
+}
+
 # Shared validation for the `rows` argument: anything that is not a data.frame
 # (matrix, list of lists, vector) fails later in .inject_id()/.auto_columns()
 # with errors far from the user's mistake, so reject it up front with a clear
@@ -214,19 +336,23 @@ DataGrid <- function(rows = NULL, columns = NULL, ...) {
 #'   \item Filter items with an empty value (\code{NULL}, \code{""}, or an
 #'     empty \code{isAnyOf} set) are ignored, matching MUI's client-side
 #'     behavior of disabling such items.
-#'   \item The toolbar quick filter is supported: each search term must appear
-#'     (case-insensitive substring) in at least one column other than
-#'     \code{id}; terms combine per the model's
+#'   \item The toolbar quick filter is supported: each search term must match
+#'     at least one searchable column; terms combine per the model's
 #'     \code{quickFilterLogicOperator} (\code{"and"} by default), and the
-#'     result is combined with the regular filter items using AND.
+#'     result is combined with the regular filter items using AND. As in MUI,
+#'     number columns match a term equal to their value, other columns match
+#'     a case-insensitive substring, and boolean columns are not searched.
+#'     \code{DataGridServer()} sends the searchable (visible) columns as
+#'     \code{quick_filter_fields}; without it, every column except \code{id}
+#'     is searched. Values are matched as stored in R, not as formatted by a
+#'     column's \code{valueFormatter}.
 #'   \item Sorting and string comparison use R's locale collation, so the
 #'     ordering of accented or mixed-case values can differ from the
 #'     browser's ordering in the client-side \code{DataGrid()}.
-#'   \item Date \code{is}/\code{not} compare values as strings (ISO dates
-#'     work; \code{Date} columns stringify to ISO), while
-#'     \code{after}/\code{before}/\code{onOrAfter}/\code{onOrBefore} parse
-#'     dates — a character column holding non-ISO dates filters correctly
-#'     with the latter but not with \code{is}/\code{not}.
+#'   \item Date filters compare calendar days. MUI sends a date filter value
+#'     as a timestamp (e.g. \code{"2024-01-15T00:00:00.000Z"}), which is
+#'     reduced to its date; for \code{dateTime} columns the timestamp is in
+#'     UTC, so a time near midnight can fall on the neighbouring day.
 #' }
 #'
 #' @param data A data.frame with all rows.
@@ -298,29 +424,26 @@ processGridParams <- function(data, params, pageSize = 100L) {
     data <- data[do.call(order, order_cols), ]
   }
 
-  # Filtering
-  no_value_ops <- c("isEmpty", "isNotEmpty")
-  known_ops <- c(
-    "contains", "equals", "is", "startsWith", "endsWith", "not", "!=",
-    "=", ">", ">=", "<", "<=", "isAnyOf",
-    "after", "onOrAfter", "before", "onOrBefore",
-    no_value_ops
-  )
+  # Filtering: one keep-vector per filter item (see .filter_ops), combined per
+  # logicOperator, then ANDed with the quick filter.
   logic_op <- params$filter_model$logicOperator %||% "and"
-
   keep_vectors <- list()
   for (f in filter_items) {
     if (is.null(f$field) || !f$field %in% names(data)) {
       next
     }
     op <- f$operator %||% ""
-    if (nzchar(op) && !op %in% known_ops) {
-      warning(
-        "Unsupported filter operator '", op, "' for field '",
-        f$field, "'; this condition passes all rows through unfiltered. ",
-        "Use manual mode (see processGridParams) to handle it yourself.",
-        call. = FALSE
-      )
+    fn <- if (nzchar(op)) .filter_ops[[op]]
+    if (is.null(fn)) {
+      if (nzchar(op)) {
+        warning(
+          "Unsupported filter operator '", op, "' for field '",
+          f$field, "'; this condition passes all rows through unfiltered. ",
+          "Use manual mode (see processGridParams) to handle it yourself.",
+          call. = FALSE
+        )
+      }
+      fn <- function(col, v) rep(TRUE, length(col))
     }
     # Skip items with no usable value, matching MUI's client-side semantics:
     # its getApplyFilterFn returns null (no filtering) for an empty value.
@@ -330,109 +453,19 @@ processGridParams <- function(data, params, pageSize = 100L) {
     # drop every row — the grid goes blank while MUI would show all rows.
     has_no_value <- is.null(f$value) || length(f$value) == 0 ||
       (length(f$value) == 1 && identical(as.character(f$value), ""))
-    if (has_no_value && !op %in% no_value_ops) {
+    if (has_no_value && !op %in% c("isEmpty", "isNotEmpty")) {
       next
     }
-    col <- data[[f$field]]
-    keep <- switch(
-      op,
-      "contains" = grepl(
-        tolower(f$value),
-        tolower(as.character(col)),
-        fixed = TRUE
-      ),
-      "equals" = tolower(as.character(col)) == tolower(f$value),
-      # `is` serves three MUI column types. boolean: MUI sends "true"/"false"
-      # while a logical column stringifies to "TRUE"/"FALSE", so a string
-      # comparison would match nothing — compare as logical instead. Date
-      # columns: as.character() yields ISO, matching MUI's ISO filter value.
-      # singleSelect: exact, case-sensitive equality (MUI's behavior).
-      "is" = if (is.logical(col)) {
-        col == as.logical(f$value)
-      } else {
-        as.character(col) == f$value
-      },
-      "startsWith" = startsWith(tolower(as.character(col)), tolower(f$value)),
-      "endsWith" = endsWith(tolower(as.character(col)), tolower(f$value)),
-      # singleSelect "not": string inequality. Number "!=": numeric inequality
-      # (string comparison would misjudge e.g. 5.10 vs "5.1").
-      "not" = tolower(as.character(col)) != tolower(f$value),
-      "!=" = if (is.numeric(col)) {
-        col != suppressWarnings(as.numeric(f$value))
-      } else {
-        tolower(as.character(col)) != tolower(f$value)
-      },
-      # Mirror "!=": numeric equality for number columns, case-insensitive string
-      # equality otherwise (a stray "=" on a non-numeric column then fails soft
-      # instead of coercing the whole column to NA).
-      "=" = if (is.numeric(col)) {
-        col == suppressWarnings(as.numeric(f$value))
-      } else {
-        tolower(as.character(col)) == tolower(f$value)
-      },
-      # Numeric comparison for number columns; lexical character comparison
-      # otherwise. MUI only emits these for `number` columns, but guarding on
-      # is.numeric() (as `=`/`!=` above do) means a mistyped string column that
-      # somehow receives a number-style filter compares lexically instead of
-      # coercing the whole column to NA.
-      ">" = if (is.numeric(col)) col > suppressWarnings(as.numeric(f$value)) else as.character(col) > f$value,
-      ">=" = if (is.numeric(col)) col >= suppressWarnings(as.numeric(f$value)) else as.character(col) >= f$value,
-      "<" = if (is.numeric(col)) col < suppressWarnings(as.numeric(f$value)) else as.character(col) < f$value,
-      "<=" = if (is.numeric(col)) col <= suppressWarnings(as.numeric(f$value)) else as.character(col) <= f$value,
-      "isAnyOf" = tolower(as.character(col)) %in% tolower(as.character(f$value)),
-      # Coerce via character so date columns that reach R as strings (the default
-      # when `type = "string"`) compare correctly, not just real Date columns.
-      # .as_date() returns NA for unparseable values (column *or* filter value)
-      # instead of erroring, so a stray non-date fails soft (dropped by the
-      # keep[is.na] step) rather than aborting the whole render.
-      "after" = .as_date(col) > .as_date(f$value),
-      "onOrAfter" = .as_date(col) >= .as_date(f$value),
-      "before" = .as_date(col) < .as_date(f$value),
-      "onOrBefore" = .as_date(col) <= .as_date(f$value),
-      "isEmpty" = is.na(col) | as.character(col) == "",
-      "isNotEmpty" = !is.na(col) & as.character(col) != "",
-      rep(TRUE, nrow(data))
-    )
+    keep <- fn(data[[f$field]], f$value)
     keep[is.na(keep)] <- FALSE
     keep_vectors[[length(keep_vectors) + 1L]] <- keep
   }
 
-  # Quick filter (the toolbar search box). Mirrors MUI's default client-side
-  # semantics: each search term must appear — case-insensitive substring — in
-  # at least one column; terms combine per quickFilterLogicOperator ("and" by
-  # default); and the result is ANDed with the regular filter items. The `id`
-  # column is skipped to match the auto-generated columns, which never
-  # display it (an auto-injected 1..n id would otherwise match numeric terms).
-  quick_terms <- as.character(unlist(
-    params$filter_model$quickFilterValues %||% list()
-  ))
-  quick_terms <- quick_terms[!is.na(quick_terms) & nzchar(quick_terms)]
-  quick_keep <- NULL
-  if (length(quick_terms) > 0) {
-    search_cols <- setdiff(names(data), "id")
-    per_term <- lapply(quick_terms, function(term) {
-      hits <- lapply(search_cols, function(nm) {
-        grepl(tolower(term), tolower(as.character(data[[nm]])), fixed = TRUE)
-      })
-      if (length(hits) == 0) rep(FALSE, nrow(data)) else Reduce(`|`, hits)
-    })
-    quick_logic <- params$filter_model$quickFilterLogicOperator %||% "and"
-    quick_keep <- if (identical(quick_logic, "or")) {
-      Reduce(`|`, per_term)
-    } else {
-      Reduce(`&`, per_term)
-    }
-    quick_keep[is.na(quick_keep)] <- FALSE
-  }
-
   combined <- NULL
   if (length(keep_vectors) > 0) {
-    combined <- if (identical(logic_op, "or")) {
-      Reduce(`|`, keep_vectors)
-    } else {
-      Reduce(`&`, keep_vectors)
-    }
+    combined <- Reduce(if (identical(logic_op, "or")) `|` else `&`, keep_vectors)
   }
+  quick_keep <- .quick_filter(data, params)
   if (!is.null(quick_keep)) {
     combined <- if (is.null(combined)) quick_keep else combined & quick_keep
   }
@@ -475,20 +508,21 @@ processGridParams <- function(data, params, pageSize = 100L) {
       length(quick_terms) == 0)) {
     return(.apply_sort_filter(rows, params))
   }
-  filter_model <- params$filter_model %||% list(items = list())
+  # Everything .apply_sort_filter reads, so the cache can never be stale.
+  key <- list(
+    sort = sort_model,
+    filter = params$filter_model %||% list(items = list()),
+    quick_fields = params$quick_filter_fields
+  )
   cache <- session$userData$.datagrid_sortfilter_cache %||% list()
   entry <- cache[[inputId]]
   if (!is.null(entry) &&
-    identical(entry$sort, sort_model) &&
-    identical(entry$filter, filter_model) &&
+    identical(entry$key, key) &&
     identical(entry$source, rows)) {
     return(entry$processed)
   }
   processed <- .apply_sort_filter(rows, params)
-  cache[[inputId]] <- list(
-    sort = sort_model, filter = filter_model,
-    source = rows, processed = processed
-  )
+  cache[[inputId]] <- list(key = key, source = rows, processed = processed)
   session$userData$.datagrid_sortfilter_cache <- cache
   processed
 }
@@ -542,7 +576,9 @@ processGridParams <- function(data, params, pageSize = 100L) {
 #'   (list with \code{page} and \code{pageSize}), \code{sort_model} (list of
 #'   sort items), and \code{filter_model} (list with \code{items},
 #'   \code{logicOperator}, and — when the toolbar quick filter is used —
-#'   \code{quickFilterValues}).
+#'   \code{quickFilterValues}). While the quick filter is active the list also
+#'   holds \code{quick_filter_fields}: the columns it searches, each a list
+#'   with \code{field} and \code{type}.
 #' @param rows A data.frame. Pass the \strong{full} dataset (like
 #'   \code{DataGrid()}) and let \code{DataGridServer()} handle pagination
 #'   automatically, or pass a pre-sliced page together with an explicit

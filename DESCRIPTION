@@ -29,7 +29,7 @@ Imports:
     htmltools,
     shiny,
     shiny.react (>= 0.4.0),
-    muiMaterial (>= 0.2.0),
+    muiMaterial (>= 0.2.1),
     utils
 Suggests:
     knitr,

@@ -23,7 +23,9 @@ in the server. The value is a list with elements \code{pagination_model}
 (list with \code{page} and \code{pageSize}), \code{sort_model} (list of
 sort items), and \code{filter_model} (list with \code{items},
 \code{logicOperator}, and — when the toolbar quick filter is used —
-\code{quickFilterValues}).}
+\code{quickFilterValues}). While the quick filter is active the list also
+holds \code{quick_filter_fields}: the columns it searches, each a list
+with \code{field} and \code{type}.}
 
 \item{rows}{A data.frame. Pass the \strong{full} dataset (like
 \code{DataGrid()}) and let \code{DataGridServer()} handle pagination

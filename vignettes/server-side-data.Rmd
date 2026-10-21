@@ -152,7 +152,9 @@ Returns a list with:
 | Date | `is`, `not`, `after`, `onOrAfter`, `before`, `onOrBefore`, `isEmpty`, `isNotEmpty` |
 | Boolean | `is` (accepts MUI's `"true"` / `"false"` values) |
 
-The toolbar **quick filter** (`showToolbar = TRUE`) is also supported: each search term must appear — as a case-insensitive substring — in at least one column other than `id`; terms combine per the model's `quickFilterLogicOperator` (`"and"` by default), and the result is combined with the regular filter items using AND.
+The toolbar **quick filter** (`showToolbar = TRUE`) is also supported. As in MUI, each search term must match at least one visible column: number columns match a term equal to their value, other columns match a case-insensitive substring, and boolean columns are not searched. Columns that are hidden or not listed in `columns` are not searched either. Terms combine per the model's `quickFilterLogicOperator` (`"and"` by default), and the result is combined with the regular filter items using AND. Values are matched as stored in R, not as formatted by a column's `valueFormatter`.
+
+Date filters compare calendar days. MUI's date picker sends its value as a timestamp (e.g. `"2024-01-15T00:00:00.000Z"`), which is reduced to its date. For `dateTime` columns that timestamp is in UTC, so a time near midnight can fall on the neighbouring day.
 
 Unrecognized operators pass all rows through (no filtering) **and emit a warning**. If you need operators not listed here, use manual mode and handle filtering yourself.
 
@@ -163,7 +165,7 @@ Unrecognized operators pass all rows through (no filtering) **and emit a warning
 Because this server-side layer is bespoke (see the experimental note at the top), it makes a few decisions for you. Knowing them avoids surprises:
 
 - **Mode is chosen by `rowCount`.** Supplying `rowCount` switches to manual mode and `rows` is treated as an already-sliced page — passing the *full* dataset with `rowCount` set will show everything on page one with no pagination. Omit `rowCount` for automatic mode. (As a guard, `DataGridServer()` warns if `nrow(rows)` exceeds `rowCount`.)
-- **Sorting or filtering resets to the first page.**
+- **Sorting or filtering resets to the first page.** Only a filter that actually changes the result does: opening the filter panel or picking an operator before typing a value keeps the current page.
 - **Missing values always sort last**, regardless of sort direction.
 - **Row ids must be stable for selection.** When `rows` has no `id` column, ids are generated positionally (1..n of the *current* filtered/sorted result), so the same record gets a different id after a sort or filter change. If you use `checkboxSelection` with server-side data, include a stable, unique `id` column in `rows` so selections survive sorting and filtering.
 
@@ -227,11 +229,12 @@ This is most useful when the data source is slow (e.g. a database query or API c
 
 ## Reading grid state
 
-The grid state is available in `input$<inputId>` as a list with three elements:
+The grid state is available in `input$<inputId>` as a list with these elements:
 
 - `pagination_model`: list with `page` (0-indexed) and `pageSize`
 - `sort_model`: list of sort items, each with `field` and `sort` ("asc" or "desc")
 - `filter_model`: list with `items`, each containing `field`, `operator`, and `value`; `logicOperator` ("and" or "or"); and, when the toolbar quick filter is used, `quickFilterValues`
+- `quick_filter_fields`: only while the quick filter is active, the columns it searches, each with `field` and `type`. `processGridParams()` uses it; in manual mode, use it to search the same columns in your own query.
 
 You can use this to display diagnostics or trigger other reactive logic:
 

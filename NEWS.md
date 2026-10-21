@@ -7,9 +7,19 @@
   * Filter items with an empty value (cleared text input, all `isAnyOf` chips
     removed, boolean "any") are now ignored, matching MUI's client-side
     behavior. Previously an emptied number filter could blank the whole grid.
-  * The toolbar quick filter is now applied server-side: terms match
-    case-insensitively against every column except `id`, combine per
-    `quickFilterLogicOperator`, and are ANDed with regular filter items.
+  * The toolbar quick filter is now applied server-side, following MUI's
+    rules: it searches only visible columns (sent by the grid as
+    `quick_filter_fields` in `input$<inputId>`), number columns match a term
+    equal to their value, other columns a case-insensitive substring, boolean
+    columns are not searched, and terms combine per
+    `quickFilterLogicOperator` and are ANDed with regular filter items.
+  * Date `is`/`not` filters now work: MUI sends the date picker's value as a
+    timestamp (`"2024-01-15T00:00:00.000Z"`), which previously never matched.
+  * Opening the filter panel or picking an operator before typing a value no
+    longer jumps back to the first page or triggers a round-trip to R; only
+    filter changes that affect the result do.
+  * An initial quick filter supplied via `initialState` is now applied on
+    first render.
 * The first automatic render of `DataGridServer()` now slices the page
   described by a user-supplied `initialState` (its `paginationModel`), so the
   served rows match the grid's pagination footer on first paint. When both
