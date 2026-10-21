@@ -769,7 +769,63 @@ test_that("quick filter with only empty/blank terms passes all rows", {
   expect_equal(processGridParams(df, params)$rowCount, 20)
 })
 
+test_that("quick filter matches number columns by value, not substring (MUI)", {
+  # "1" equals only n = 1; a substring match would also hit 10 and 100.
+  df_num <- data.frame(n = c(1, 10, 100), label = c("a", "b", "c"))
+  params <- list(filter_model = list(items = list(), quickFilterValues = list("1")))
+  expect_equal(processGridParams(df_num, params)$rows$n, 1)
+})
+
+test_that("quick filter does not search logical columns (MUI)", {
+  df_bool <- data.frame(flag = c(TRUE, FALSE), label = c("a", "b"))
+  params <- list(filter_model = list(items = list(), quickFilterValues = list("true")))
+  expect_equal(processGridParams(df_bool, params)$rowCount, 0)
+})
+
+test_that("quick filter searches only the quick_filter_fields the grid sends", {
+  df_hidden <- data.frame(
+    label = c("alpha", "beta"),
+    secret = c("needle", "hay"),
+    n = c(5, 50)
+  )
+  params <- list(
+    filter_model = list(items = list(), quickFilterValues = list("needle")),
+    quick_filter_fields = list(
+      list(field = "label", type = "string"),
+      list(field = "n", type = "number")
+    )
+  )
+  # `secret` is not displayed, so a term only it contains matches nothing.
+  expect_equal(processGridParams(df_hidden, params)$rowCount, 0)
+  params$filter_model$quickFilterValues <- list("5")
+  expect_equal(processGridParams(df_hidden, params)$rows$n, 5)
+  # A number column the grid treats as a string matches by substring.
+  params$quick_filter_fields[[2]]$type <- "string"
+  expect_equal(processGridParams(df_hidden, params)$rows$n, c(5, 50))
+  # Fields absent from the data are ignored rather than erroring.
+  params$quick_filter_fields <- list(list(field = "gone", type = "string"))
+  expect_equal(processGridParams(df_hidden, params)$rowCount, 0)
+})
+
 # --- Date filter operators ---
+
+test_that("date is/not accept the ISO timestamp MUI sends", {
+  # MUI's date input stores a JS Date, so the value arrives as a timestamp.
+  df_dates <- data.frame(
+    d = as.Date(c("2024-01-14", "2024-01-15", "2024-01-16")),
+    s = c("2024-01-14", "2024-01-15", "2024-01-16")
+  )
+  filter <- function(field, op) {
+    params <- list(filter_model = list(items = list(
+      list(field = field, operator = op, value = "2024-01-15T00:00:00.000Z")
+    )))
+    format(processGridParams(df_dates, params)$rows$d)
+  }
+  expect_equal(filter("d", "is"), "2024-01-15")
+  expect_equal(filter("d", "not"), c("2024-01-14", "2024-01-16"))
+  expect_equal(filter("s", "is"), "2024-01-15")
+  expect_equal(filter("d", "after"), "2024-01-16")
+})
 
 test_that("filters with after operator", {
   df_dates <- data.frame(
@@ -986,6 +1042,21 @@ test_that(".memoized_sort_filter recomputes when sort/filter changes", {
   # Different sort model invalidates the cache, so the poisoned frame is ignored.
   out <- muiDataGrid:::.memoized_sort_filter(session, "grid", df, desc)
   expect_equal(out$value, 20:1)
+})
+
+test_that(".memoized_sort_filter recomputes when quick_filter_fields change", {
+  session <- shiny::MockShinySession$new()
+  params <- list(
+    filter_model = list(items = list(), quickFilterValues = list("Row 2")),
+    quick_filter_fields = list(list(field = "name", type = "string"))
+  )
+  muiDataGrid:::.memoized_sort_filter(session, "grid", df, params)
+  session$userData$.datagrid_sortfilter_cache[["grid"]]$processed <-
+    data.frame(id = -1L)
+  # Hiding the searched column changes the result, so the cache must miss.
+  params$quick_filter_fields <- list(list(field = "group", type = "string"))
+  out <- muiDataGrid:::.memoized_sort_filter(session, "grid", df, params)
+  expect_equal(nrow(out), 0)
 })
 
 test_that(".memoized_sort_filter skips the cache when nothing to sort/filter", {

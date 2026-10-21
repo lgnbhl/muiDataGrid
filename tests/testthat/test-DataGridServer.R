@@ -4,14 +4,14 @@ get_props <- function(result) {
 
 test_that("DataGridServer returns a shiny.tag", {
   df <- data.frame(name = c("Luke", "Leia"), height = c(172, 150))
-  result <- DataGridServer(inputId = "grid", rows = df, rowCount = 2L)
+  result <- DataGridServer(inputId = "grid", rows = df)
   expect_s3_class(result, "shiny.tag")
 })
 
 test_that("DataGridServer targets correct React module and component", {
   df <- data.frame(name = c("Luke", "Leia"), height = c(172, 150))
   rd <- attr(
-    DataGridServer(inputId = "grid", rows = df, rowCount = 2L),
+    DataGridServer(inputId = "grid", rows = df),
     "reactData"
   )
   expect_equal(rd$module, "@muiDataGrid/custom")
@@ -22,8 +22,7 @@ test_that("DataGridServer auto-generates id column when missing", {
   df <- data.frame(name = c("Luke", "Leia"), height = c(172, 150))
   rows <- get_props(DataGridServer(
     inputId = "grid",
-    rows = df,
-    rowCount = 2L
+    rows = df
   ))$rows
   expect_true("id" %in% names(rows[[1]]))
 })
@@ -32,8 +31,7 @@ test_that("DataGridServer preserves existing id column", {
   df <- data.frame(id = c(10, 20), name = c("Luke", "Leia"))
   rows <- get_props(DataGridServer(
     inputId = "grid",
-    rows = df,
-    rowCount = 2L
+    rows = df
   ))$rows
   expect_equal(rows[[1]]$id, 10)
   expect_equal(rows[[2]]$id, 20)
@@ -43,8 +41,7 @@ test_that("DataGridServer auto-generates columns when NULL", {
   df <- data.frame(name = c("Luke"), height = c(172))
   columns <- get_props(DataGridServer(
     inputId = "grid",
-    rows = df,
-    rowCount = 1L
+    rows = df
   ))$columns
   fields <- vapply(columns, function(c) c$field, character(1))
   expect_equal(fields, c("name", "height"))
@@ -56,8 +53,7 @@ test_that("DataGridServer uses custom columns when provided", {
   columns <- get_props(DataGridServer(
     inputId = "grid",
     rows = df,
-    columns = cols,
-    rowCount = 1L
+    columns = cols
   ))$columns
   expect_equal(columns[[1]]$field, "name")
   expect_equal(columns[[1]]$headerName, "Name")
@@ -67,20 +63,15 @@ test_that("DataGridServer sets inputId prop", {
   df <- data.frame(id = 1, name = "Luke")
   props <- get_props(DataGridServer(
     inputId = "my_grid",
-    rows = df,
-    rowCount = 1L
+    rows = df
   ))
   expect_equal(props$inputId, "my_grid")
 })
 
-test_that("DataGridServer converts rowCount to integer", {
-  df <- data.frame(id = 1, name = "Luke")
-  props <- get_props(DataGridServer(
-    inputId = "grid",
-    rows = df,
-    rowCount = 100.5
-  ))
-  expect_type(props$rowCount, "integer")
+test_that("DataGridServer reports the total as an integer rowCount without a session", {
+  df <- data.frame(id = 1:3, name = c("Luke", "Leia", "Han"))
+  props <- get_props(DataGridServer(inputId = "grid", rows = df))
+  expect_identical(props$rowCount, 3L)
 })
 
 test_that("DataGridServer converts pageSizeOptions to list of integers", {
@@ -88,7 +79,6 @@ test_that("DataGridServer converts pageSizeOptions to list of integers", {
   props <- get_props(DataGridServer(
     inputId = "grid",
     rows = df,
-    rowCount = 1L,
     pageSizeOptions = c(5, 10, 25)
   ))
   expect_type(props$pageSizeOptions, "list")
@@ -101,21 +91,19 @@ test_that("DataGridServer warns and strips protected props from ...", {
     result <- DataGridServer(
       inputId = "grid",
       rows = df,
-      rowCount = 1L,
       paginationMode = "client"
     ),
     "paginationMode"
   )
-  props <- get_props(result)
-  expect_equal(props$paginationMode, "server")
+  # Stripped: the user's "client" never reaches MUI, which forces "server".
+  expect_null(get_props(result)$paginationMode)
 })
 
 test_that("DataGridServer excludes id from auto-generated columns", {
   df <- data.frame(id = 1:2, name = c("Luke", "Leia"), height = c(172, 150))
   columns <- get_props(DataGridServer(
     inputId = "grid",
-    rows = df,
-    rowCount = 2L
+    rows = df
   ))$columns
   fields <- vapply(columns, function(c) c$field, character(1))
   expect_false("id" %in% fields)
@@ -128,7 +116,6 @@ test_that("DataGridServer errors when initialPageSize not in pageSizeOptions", {
     DataGridServer(
       inputId = "grid",
       rows = df,
-      rowCount = 1L,
       initialPageSize = 15L,
       pageSizeOptions = c(10L, 25L, 50L)
     ),
@@ -143,7 +130,6 @@ test_that("DataGridServer errors when initialPageSize not in default pageSizeOpt
     DataGridServer(
       inputId = "grid",
       rows = df,
-      rowCount = 1L,
       initialPageSize = 15L
     ),
     "initialPageSize"
@@ -156,7 +142,6 @@ test_that("DataGridServer allows initialPageSize in default pageSizeOptions", {
     DataGridServer(
       inputId = "grid",
       rows = df,
-      rowCount = 1L,
       initialPageSize = 50L
     ),
     "shiny.tag"
@@ -168,7 +153,6 @@ test_that("DataGridServer builds initialState from initialPageSize", {
   props <- get_props(DataGridServer(
     inputId = "grid",
     rows = df,
-    rowCount = 1L,
     initialPageSize = 25L,
     pageSizeOptions = c(25L, 50L)
   ))
@@ -180,23 +164,119 @@ test_that("DataGridServer initialState is NULL when initialPageSize is NULL", {
   df <- data.frame(id = 1, name = "Luke")
   props <- get_props(DataGridServer(
     inputId = "grid",
-    rows = df,
-    rowCount = 1L
+    rows = df
   ))
   expect_null(props$initialState)
 })
 
-test_that("DataGridServer sets server-mode props", {
+test_that("DataGridServer leaves the server-mode props to MUI's data source", {
   df <- data.frame(id = 1, name = "Luke")
   props <- get_props(DataGridServer(
     inputId = "grid",
-    rows = df,
-    rowCount = 1L
+    rows = df
   ))
-  expect_equal(props$paginationMode, "server")
-  expect_equal(props$sortingMode, "server")
-  expect_equal(props$filterMode, "server")
-  expect_true(props$pagination)
+  expect_null(props$paginationMode)
+  expect_null(props$sortingMode)
+  expect_null(props$filterMode)
+  expect_null(props$pagination)
+})
+
+test_that("DataGridServer serves pages over an HTTP endpoint in a session", {
+  # The grid requests every page itself, so R sends only the columns and the
+  # endpoint URL, then answers each request.
+  df <- data.frame(name = paste("Row", 1:30), value = 1:30)
+  session <- shiny::MockShinySession$new()
+  endpoints <- local_endpoints()
+  props <- get_props(shiny::withReactiveDomain(session, shiny::isolate(
+    DataGridServer("grid", rows = df, initialPageSize = 25)
+  )))
+  expect_length(props$rows, 0)
+  expect_match(props$dataUrl, "dataobj/grid")
+  expect_equal(vapply(props$columns, function(c) c$field, ""), c("name", "value"))
+  expect_equal(props$columns[[2]]$type, "number")
+
+  res <- request_endpoint(endpoints, "grid", page_request(
+    page = 0, pageSize = 5,
+    sort = list(list(field = "value", sort = "desc"))
+  ))
+  expect_equal(res$status, 200L)
+  expect_equal(res$body$rowCount, 30)
+  expect_equal(vapply(res$body$rows, function(r) r$value, 1), 30:26)
+
+  res <- request_endpoint(endpoints, "grid", page_request(items = list(
+    list(field = "value", operator = ">", value = "28")
+  )))
+  expect_equal(res$body$rowCount, 2)
+})
+
+test_that("DataGridServer endpoint reports errors instead of crashing", {
+  session <- shiny::MockShinySession$new()
+  endpoints <- local_endpoints()
+  shiny::withReactiveDomain(session, shiny::isolate(DataGridServer(
+    "grid",
+    columns = list(list(field = "x")),
+    getRows = function(params) stop("database is down")
+  )))
+  expect_warning(res <- request_endpoint(endpoints, "grid", page_request()), "database is down")
+  expect_equal(res$status, 500L)
+  expect_equal(res$body$error, "database is down")
+})
+
+test_that("DataGridServer getRows receives the request and returns the page", {
+  df <- data.frame(name = paste("Row", 1:30), value = 1:30)
+  seen <- NULL
+  session <- shiny::MockShinySession$new()
+  endpoints <- local_endpoints()
+  props <- get_props(shiny::withReactiveDomain(session, shiny::isolate(DataGridServer(
+    "grid",
+    columns = list(list(field = "name"), list(field = "value", type = "number")),
+    getRows = function(params) {
+      seen <<- params
+      processGridParams(df, params)
+    }
+  ))))
+  expect_length(props$rows, 0)
+  res <- request_endpoint(endpoints, "grid", page_request(page = 1, pageSize = 10))
+  expect_equal(seen$pagination_model$page, 1)
+  expect_equal(res$body$rowCount, 30)
+  expect_equal(vapply(res$body$rows, function(r) r$value, 1), 11:20)
+})
+
+test_that("DataGridServer getRows must return rows and rowCount", {
+  session <- shiny::MockShinySession$new()
+  endpoints <- local_endpoints()
+  shiny::withReactiveDomain(session, shiny::isolate(DataGridServer(
+    "grid", columns = list(list(field = "x")), getRows = function(params) data.frame(x = 1)
+  )))
+  expect_warning(res <- request_endpoint(endpoints, "grid", page_request()), "must return")
+  expect_equal(res$status, 500L)
+})
+
+test_that("DataGridServer validates getRows usage", {
+  cols <- list(list(field = "x"))
+  expect_error(DataGridServer("g", columns = cols, getRows = "nope"), "must be a function")
+  expect_error(
+    DataGridServer("g", rows = data.frame(x = 1), columns = cols, getRows = function(p) NULL),
+    "either `rows` or `getRows`"
+  )
+  expect_error(DataGridServer("g", getRows = function(p) NULL), "`columns` is required")
+})
+
+test_that("DataGridServer getRows renders the first page without a session", {
+  df <- data.frame(x = 1:50)
+  props <- get_props(DataGridServer(
+    "g",
+    columns = list(list(field = "x", type = "number")),
+    getRows = function(params) processGridParams(df, params),
+    initialPageSize = 25
+  ))
+  expect_length(props$rows, 25)
+  expect_equal(props$rowCount, 50L)
+})
+
+test_that("DataGridServer rowCount is defunct and points to getRows", {
+  df <- data.frame(x = 1:5)
+  expect_error(DataGridServer("g", rows = df, rowCount = 5L), "getRows")
 })
 
 test_that("DataGridServer passes loading prop", {
@@ -204,7 +284,6 @@ test_that("DataGridServer passes loading prop", {
   props <- get_props(DataGridServer(
     inputId = "grid",
     rows = df,
-    rowCount = 1L,
     loading = TRUE
   ))
   expect_true(props$loading)
@@ -215,7 +294,6 @@ test_that("DataGridServer passes filterDebounce prop", {
   props <- get_props(DataGridServer(
     inputId = "grid",
     rows = df,
-    rowCount = 1L,
     filterDebounce = 500L
   ))
   expect_equal(props$filterDebounce, 500L)
@@ -226,7 +304,6 @@ test_that("DataGridServer passes extra props via ...", {
   props <- get_props(DataGridServer(
     inputId = "grid",
     rows = df,
-    rowCount = 1L,
     density = "compact",
     disableColumnFilter = TRUE
   ))
@@ -235,25 +312,10 @@ test_that("DataGridServer passes extra props via ...", {
 })
 
 test_that("DataGridServer handles NULL rows", {
-  result <- DataGridServer(inputId = "grid", rows = NULL, rowCount = 0L)
+  result <- DataGridServer(inputId = "grid", rows = NULL)
   expect_s3_class(result, "shiny.tag")
   props <- get_props(result)
   expect_null(props$columns)
-})
-
-test_that("DataGridServer warns when rows has more rows than rowCount", {
-  df <- data.frame(id = 1:10, name = paste("Row", 1:10))
-  expect_warning(
-    DataGridServer(inputId = "grid", rows = df, rowCount = 5L),
-    "smaller than nrow"
-  )
-})
-
-test_that("DataGridServer does not warn when rows fits within rowCount", {
-  df <- data.frame(id = 1:5, name = paste("Row", 1:5))
-  expect_no_warning(
-    DataGridServer(inputId = "grid", rows = df, rowCount = 100L)
-  )
 })
 
 test_that("DataGridServer warns and keeps user initialState over initialPageSize", {
@@ -263,7 +325,6 @@ test_that("DataGridServer warns and keeps user initialState over initialPageSize
     result <- DataGridServer(
       inputId = "grid",
       rows = df,
-      rowCount = 1L,
       initialPageSize = 25L,
       pageSizeOptions = c(25L, 50L),
       initialState = custom_state
@@ -352,52 +413,25 @@ test_that("DataGridServer messages when used without a Shiny session in knitr", 
   old <- options(knitr.in.progress = TRUE)
   on.exit(options(old))
   expect_message(
-    DataGridServer(inputId = "grid", rows = df, rowCount = 3L),
+    DataGridServer(inputId = "grid", rows = df),
     "running Shiny session"
   )
 })
 
-test_that("DataGridServer rejects two live outputs sharing one inputId", {
-  df <- data.frame(name = c("a", "b"), height = c(1, 2))
+test_that("DataGridServer renders the requested page in a test session", {
+  # shiny::testServer() sessions have no HTTP endpoints, so the page set in
+  # input$<inputId> is rendered directly.
+  df <- data.frame(name = paste("Row", 1:30), value = 1:30)
   session <- shiny::MockShinySession$new()
-  current <- "outA"
-  testthat::local_mocked_bindings(
-    getCurrentOutputInfo = function(...) list(name = current),
-    .package = "shiny"
-  )
-  shiny::withReactiveDomain(session, {
-    current <- "outA"
-    DataGridServer("grid", rows = df, rowCount = 2L)
-    # A different output claiming the same inputId in the same flush collides.
-    current <- "outB"
-    expect_error(
-      DataGridServer("grid", rows = df, rowCount = 2L),
-      "already used by output"
-    )
-  })
+  session$setInputs(grid = list(
+    pagination_model = list(page = 1, pageSize = 25),
+    sort_model = list(), filter_model = list(items = list())
+  ))
+  props <- get_props(shiny::withReactiveDomain(session, shiny::isolate(
+    DataGridServer("grid", rows = df, initialPageSize = 25)
+  )))
+  expect_null(props$dataUrl)
+  expect_equal(vapply(props$rows, function(r) r$value, integer(1)), 26:30)
+  expect_equal(props$rowCount, 30L)
 })
 
-test_that("DataGridServer frees an inputId once its owning output stops rendering", {
-  # Regression: a removed/replaced output must not permanently reserve its
-  # inputId. The end-of-flush registry reset is what releases it; simulate that
-  # reset, then a new output reusing the inputId must succeed.
-  df <- data.frame(name = c("a", "b"), height = c(1, 2))
-  session <- shiny::MockShinySession$new()
-  current <- "outA"
-  testthat::local_mocked_bindings(
-    getCurrentOutputInfo = function(...) list(name = current),
-    .package = "shiny"
-  )
-  shiny::withReactiveDomain(session, {
-    current <- "outA"
-    DataGridServer("grid", rows = df, rowCount = 2L)
-    expect_equal(session$userData$.datagrid_input_registry[["grid"]], "outA")
-    # Emulate the scheduled end-of-flush reset.
-    session$userData$.datagrid_input_registry <- list()
-    session$userData$.datagrid_registry_reset_scheduled <- NULL
-    # outA is gone; outC reuses "grid" on a later flush — must not error.
-    current <- "outC"
-    expect_error(DataGridServer("grid", rows = df, rowCount = 2L), NA)
-    expect_equal(session$userData$.datagrid_input_registry[["grid"]], "outC")
-  })
-})

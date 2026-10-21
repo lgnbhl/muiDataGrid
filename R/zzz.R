@@ -6,7 +6,7 @@
 # with, the grid fails at runtime in the browser (blank output / console errors)
 # with nothing on the R side to explain it. Bump this whenever the bundled
 # @mui/x-data-grid major changes to require a newer muiMaterial.
-.MUIMATERIAL_MIN_VERSION <- "0.2.0"
+.MUIMATERIAL_MIN_VERSION <- "0.2.1"
 
 # Warn (once, at attach) if the installed muiMaterial predates the version known
 # to ship a compatible MUI runtime. Kept out of muiDataGridDependency() so it

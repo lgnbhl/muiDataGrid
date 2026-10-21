@@ -1,7 +1,7 @@
 Package: muiDataGrid
 Type: Package
 Title: 'MUI X Data Grid' for 'shiny' Apps and 'Quarto'
-Version: 0.1.2.9000
+Version: 0.2.0
 Authors@R:
   c(person(given = "Felix",
            family = "Luginbuhl",
@@ -27,9 +27,10 @@ Language: en-US
 Depends: R (>= 3.4)
 Imports:
     htmltools,
+    jsonlite,
     shiny,
     shiny.react (>= 0.4.0),
-    muiMaterial (>= 0.2.0),
+    muiMaterial (>= 0.2.1),
     utils
 Suggests:
     knitr,

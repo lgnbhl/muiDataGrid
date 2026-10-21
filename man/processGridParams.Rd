@@ -41,19 +41,23 @@ Decisions worth knowing about:
   \item Filter items with an empty value (\code{NULL}, \code{""}, or an
     empty \code{isAnyOf} set) are ignored, matching MUI's client-side
     behavior of disabling such items.
-  \item The toolbar quick filter is supported: each search term must appear
-    (case-insensitive substring) in at least one column other than
-    \code{id}; terms combine per the model's
+  \item The toolbar quick filter is supported: each search term must match
+    at least one searchable column; terms combine per the model's
     \code{quickFilterLogicOperator} (\code{"and"} by default), and the
-    result is combined with the regular filter items using AND.
+    result is combined with the regular filter items using AND. As in MUI,
+    number columns match a term equal to their value, other columns match
+    a case-insensitive substring, and boolean columns are not searched.
+    \code{DataGridServer()} sends the searchable (visible) columns as
+    \code{quick_filter_fields}; without it, every column except \code{id}
+    is searched. Values are matched as stored in R, not as formatted by a
+    column's \code{valueFormatter}.
   \item Sorting and string comparison use R's locale collation, so the
     ordering of accented or mixed-case values can differ from the
     browser's ordering in the client-side \code{DataGrid()}.
-  \item Date \code{is}/\code{not} compare values as strings (ISO dates
-    work; \code{Date} columns stringify to ISO), while
-    \code{after}/\code{before}/\code{onOrAfter}/\code{onOrBefore} parse
-    dates — a character column holding non-ISO dates filters correctly
-    with the latter but not with \code{is}/\code{not}.
+  \item Date filters compare calendar days. MUI sends a date filter value
+    as a timestamp (e.g. \code{"2024-01-15T00:00:00.000Z"}), which is
+    reduced to its date; for \code{dateTime} columns the timestamp is in
+    UTC, so a time near midnight can fall on the neighbouring day.
 }
 }
 

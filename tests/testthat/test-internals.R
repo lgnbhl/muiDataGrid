@@ -61,7 +61,9 @@ test_that(".check_muimaterial_compat warns when muiMaterial is too old", {
 
 test_that(".check_muimaterial_compat is silent when muiMaterial is recent enough", {
   testthat::local_mocked_bindings(
-    packageVersion = function(pkg) package_version("0.2.0"),
+    packageVersion = function(pkg) {
+      package_version(muiDataGrid:::.MUIMATERIAL_MIN_VERSION)
+    },
     .package = "utils"
   )
   expect_no_message(muiDataGrid:::.check_muimaterial_compat())

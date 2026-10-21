@@ -21,6 +21,128 @@
   out
 }
 
+# Lower-cased character view of a column or filter value; the case-insensitive
+# string operators compare on this.
+.lc <- function(x) tolower(as.character(x))
+
+.num <- function(x) suppressWarnings(as.numeric(x))
+
+# MUI's date filter input stores a JS Date, which reaches R as a full ISO
+# timestamp ("2024-01-15T00:00:00.000Z"), never as the bare date typed in the
+# input. Detected so `is`/`not` compare calendar days instead of strings, which
+# would never match.
+.is_timestamp <- function(v) {
+  is.character(v) && length(v) == 1 &&
+    grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}T", v)
+}
+
+# Number operators compare numerically on number columns. On any other column
+# they fall back to string comparison (case-insensitive for =/!=, lexical for
+# the orderings), so a stray number-style filter fails soft instead of
+# coercing the whole column to NA.
+.num_op <- function(cmp, fold = FALSE) {
+  function(col, v) {
+    if (is.numeric(col)) {
+      cmp(col, .num(v))
+    } else if (fold) {
+      cmp(.lc(col), .lc(v))
+    } else {
+      cmp(as.character(col), v)
+    }
+  }
+}
+
+# Coerce via character so date columns that reach R as strings (the default
+# when `type = "string"`) compare correctly, not just real Date columns.
+# .as_date() returns NA for unparseable values (column *or* filter value), so a
+# stray non-date fails soft (dropped as no match) instead of aborting a render.
+.date_op <- function(cmp) {
+  function(col, v) cmp(.as_date(col), .as_date(v))
+}
+
+# One entry per supported MUI filter operator: function(col, value) returning a
+# logical keep-vector. NA results count as no match. Operators missing here
+# pass all rows through with a warning (see .apply_sort_filter).
+.filter_ops <- list(
+  contains   = function(col, v) grepl(.lc(v), .lc(col), fixed = TRUE),
+  equals     = function(col, v) .lc(col) == .lc(v),
+  startsWith = function(col, v) startsWith(.lc(col), .lc(v)),
+  endsWith   = function(col, v) endsWith(.lc(col), .lc(v)),
+  isAnyOf    = function(col, v) .lc(col) %in% .lc(v),
+  # `is` serves three MUI column types. boolean: MUI sends "true"/"false"
+  # while a logical column stringifies to "TRUE"/"FALSE", so compare as
+  # logical. date: compare days (see .is_timestamp). singleSelect: exact,
+  # case-sensitive equality (MUI's behavior).
+  is = function(col, v) {
+    if (is.logical(col)) {
+      col == as.logical(v)
+    } else if (.is_timestamp(v)) {
+      .as_date(col) == .as_date(v)
+    } else {
+      as.character(col) == v
+    }
+  },
+  not = function(col, v) {
+    if (.is_timestamp(v)) .as_date(col) != .as_date(v) else .lc(col) != .lc(v)
+  },
+  "="  = .num_op(`==`, fold = TRUE),
+  "!=" = .num_op(`!=`, fold = TRUE),
+  ">"  = .num_op(`>`),
+  ">=" = .num_op(`>=`),
+  "<"  = .num_op(`<`),
+  "<=" = .num_op(`<=`),
+  after      = .date_op(`>`),
+  onOrAfter  = .date_op(`>=`),
+  before     = .date_op(`<`),
+  onOrBefore = .date_op(`<=`),
+  isEmpty    = function(col, v) is.na(col) | as.character(col) == "",
+  isNotEmpty = function(col, v) !is.na(col) & as.character(col) != ""
+)
+
+# Quick filter (the toolbar search box), mirroring MUI's client-side rules:
+# each term must match at least one searchable column, and terms combine per
+# quickFilterLogicOperator ("and" by default). A number column matches a term
+# that parses to its value; other columns match a case-insensitive substring.
+# The grid sends the searchable columns (visible, with a type that supports
+# quick filtering, so never boolean) as `quick_filter_fields`. Without it
+# (params built by hand) every column except `id`, which the auto-generated
+# columns never display, and logical columns is searched. Returns NULL when
+# there is nothing to search for.
+.quick_filter <- function(data, params) {
+  terms <- as.character(unlist(
+    params$filter_model$quickFilterValues %||% list()
+  ))
+  terms <- terms[!is.na(terms) & nzchar(terms)]
+  if (length(terms) == 0) {
+    return(NULL)
+  }
+  sent <- params$quick_filter_fields
+  if (is.null(sent)) {
+    fields <- setdiff(names(data), "id")
+    fields <- fields[!vapply(data[fields], is.logical, logical(1))]
+    num_cols <- vapply(data[fields], is.numeric, logical(1))
+  } else {
+    fields <- vapply(sent, function(x) as.character(x$field), character(1))
+    num_cols <- vapply(sent, function(x) identical(x$type, "number"), logical(1))
+    num_cols <- num_cols[fields %in% names(data)]
+    fields <- fields[fields %in% names(data)]
+  }
+  # Convert each searched column once rather than once per term.
+  cols <- Map(function(nm, is_num) {
+    if (is_num) .num(data[[nm]]) else .lc(data[[nm]])
+  }, fields, num_cols)
+  per_term <- lapply(terms, function(term) {
+    hits <- Map(function(col, is_num) {
+      if (is_num) col == .num(term) else grepl(tolower(term), col, fixed = TRUE)
+    }, cols, num_cols)
+    Reduce(`|`, hits, rep(FALSE, nrow(data)))
+  })
+  logic <- params$filter_model$quickFilterLogicOperator %||% "and"
+  keep <- Reduce(if (identical(logic, "or")) `|` else `&`, per_term)
+  keep[is.na(keep)] <- FALSE
+  keep
+}
+
 # Shared validation for the `rows` argument: anything that is not a data.frame
 # (matrix, list of lists, vector) fails later in .inject_id()/.auto_columns()
 # with errors far from the user's mistake, so reject it up front with a clear
@@ -214,19 +336,23 @@ DataGrid <- function(rows = NULL, columns = NULL, ...) {
 #'   \item Filter items with an empty value (\code{NULL}, \code{""}, or an
 #'     empty \code{isAnyOf} set) are ignored, matching MUI's client-side
 #'     behavior of disabling such items.
-#'   \item The toolbar quick filter is supported: each search term must appear
-#'     (case-insensitive substring) in at least one column other than
-#'     \code{id}; terms combine per the model's
+#'   \item The toolbar quick filter is supported: each search term must match
+#'     at least one searchable column; terms combine per the model's
 #'     \code{quickFilterLogicOperator} (\code{"and"} by default), and the
-#'     result is combined with the regular filter items using AND.
+#'     result is combined with the regular filter items using AND. As in MUI,
+#'     number columns match a term equal to their value, other columns match
+#'     a case-insensitive substring, and boolean columns are not searched.
+#'     \code{DataGridServer()} sends the searchable (visible) columns as
+#'     \code{quick_filter_fields}; without it, every column except \code{id}
+#'     is searched. Values are matched as stored in R, not as formatted by a
+#'     column's \code{valueFormatter}.
 #'   \item Sorting and string comparison use R's locale collation, so the
 #'     ordering of accented or mixed-case values can differ from the
 #'     browser's ordering in the client-side \code{DataGrid()}.
-#'   \item Date \code{is}/\code{not} compare values as strings (ISO dates
-#'     work; \code{Date} columns stringify to ISO), while
-#'     \code{after}/\code{before}/\code{onOrAfter}/\code{onOrBefore} parse
-#'     dates — a character column holding non-ISO dates filters correctly
-#'     with the latter but not with \code{is}/\code{not}.
+#'   \item Date filters compare calendar days. MUI sends a date filter value
+#'     as a timestamp (e.g. \code{"2024-01-15T00:00:00.000Z"}), which is
+#'     reduced to its date; for \code{dateTime} columns the timestamp is in
+#'     UTC, so a time near midnight can fall on the neighbouring day.
 #' }
 #'
 #' @param data A data.frame with all rows.
@@ -269,8 +395,8 @@ processGridParams <- function(data, params, pageSize = 100L) {
 }
 
 # Sorting + filtering + id injection: the expensive part of processGridParams,
-# extracted so DataGridServer()'s automatic mode can memoize it (see
-# .memoized_sort_filter). A pagination-only change re-renders the grid but does
+# extracted so DataGridServer(rows = ...) can memoize it (see
+# .memoized_sort_filter). A pagination-only change requests a new page but does
 # not alter this result, so caching it avoids re-running order() over every row
 # on each page click.
 .apply_sort_filter <- function(data, params) {
@@ -298,29 +424,26 @@ processGridParams <- function(data, params, pageSize = 100L) {
     data <- data[do.call(order, order_cols), ]
   }
 
-  # Filtering
-  no_value_ops <- c("isEmpty", "isNotEmpty")
-  known_ops <- c(
-    "contains", "equals", "is", "startsWith", "endsWith", "not", "!=",
-    "=", ">", ">=", "<", "<=", "isAnyOf",
-    "after", "onOrAfter", "before", "onOrBefore",
-    no_value_ops
-  )
+  # Filtering: one keep-vector per filter item (see .filter_ops), combined per
+  # logicOperator, then ANDed with the quick filter.
   logic_op <- params$filter_model$logicOperator %||% "and"
-
   keep_vectors <- list()
   for (f in filter_items) {
     if (is.null(f$field) || !f$field %in% names(data)) {
       next
     }
     op <- f$operator %||% ""
-    if (nzchar(op) && !op %in% known_ops) {
-      warning(
-        "Unsupported filter operator '", op, "' for field '",
-        f$field, "'; this condition passes all rows through unfiltered. ",
-        "Use manual mode (see processGridParams) to handle it yourself.",
-        call. = FALSE
-      )
+    fn <- if (nzchar(op)) .filter_ops[[op]]
+    if (is.null(fn)) {
+      if (nzchar(op)) {
+        warning(
+          "Unsupported filter operator '", op, "' for field '",
+          f$field, "'; this condition passes all rows through unfiltered. ",
+          "Use DataGridServer(getRows = ...) to handle it yourself.",
+          call. = FALSE
+        )
+      }
+      fn <- function(col, v) rep(TRUE, length(col))
     }
     # Skip items with no usable value, matching MUI's client-side semantics:
     # its getApplyFilterFn returns null (no filtering) for an empty value.
@@ -330,109 +453,19 @@ processGridParams <- function(data, params, pageSize = 100L) {
     # drop every row — the grid goes blank while MUI would show all rows.
     has_no_value <- is.null(f$value) || length(f$value) == 0 ||
       (length(f$value) == 1 && identical(as.character(f$value), ""))
-    if (has_no_value && !op %in% no_value_ops) {
+    if (has_no_value && !op %in% c("isEmpty", "isNotEmpty")) {
       next
     }
-    col <- data[[f$field]]
-    keep <- switch(
-      op,
-      "contains" = grepl(
-        tolower(f$value),
-        tolower(as.character(col)),
-        fixed = TRUE
-      ),
-      "equals" = tolower(as.character(col)) == tolower(f$value),
-      # `is` serves three MUI column types. boolean: MUI sends "true"/"false"
-      # while a logical column stringifies to "TRUE"/"FALSE", so a string
-      # comparison would match nothing — compare as logical instead. Date
-      # columns: as.character() yields ISO, matching MUI's ISO filter value.
-      # singleSelect: exact, case-sensitive equality (MUI's behavior).
-      "is" = if (is.logical(col)) {
-        col == as.logical(f$value)
-      } else {
-        as.character(col) == f$value
-      },
-      "startsWith" = startsWith(tolower(as.character(col)), tolower(f$value)),
-      "endsWith" = endsWith(tolower(as.character(col)), tolower(f$value)),
-      # singleSelect "not": string inequality. Number "!=": numeric inequality
-      # (string comparison would misjudge e.g. 5.10 vs "5.1").
-      "not" = tolower(as.character(col)) != tolower(f$value),
-      "!=" = if (is.numeric(col)) {
-        col != suppressWarnings(as.numeric(f$value))
-      } else {
-        tolower(as.character(col)) != tolower(f$value)
-      },
-      # Mirror "!=": numeric equality for number columns, case-insensitive string
-      # equality otherwise (a stray "=" on a non-numeric column then fails soft
-      # instead of coercing the whole column to NA).
-      "=" = if (is.numeric(col)) {
-        col == suppressWarnings(as.numeric(f$value))
-      } else {
-        tolower(as.character(col)) == tolower(f$value)
-      },
-      # Numeric comparison for number columns; lexical character comparison
-      # otherwise. MUI only emits these for `number` columns, but guarding on
-      # is.numeric() (as `=`/`!=` above do) means a mistyped string column that
-      # somehow receives a number-style filter compares lexically instead of
-      # coercing the whole column to NA.
-      ">" = if (is.numeric(col)) col > suppressWarnings(as.numeric(f$value)) else as.character(col) > f$value,
-      ">=" = if (is.numeric(col)) col >= suppressWarnings(as.numeric(f$value)) else as.character(col) >= f$value,
-      "<" = if (is.numeric(col)) col < suppressWarnings(as.numeric(f$value)) else as.character(col) < f$value,
-      "<=" = if (is.numeric(col)) col <= suppressWarnings(as.numeric(f$value)) else as.character(col) <= f$value,
-      "isAnyOf" = tolower(as.character(col)) %in% tolower(as.character(f$value)),
-      # Coerce via character so date columns that reach R as strings (the default
-      # when `type = "string"`) compare correctly, not just real Date columns.
-      # .as_date() returns NA for unparseable values (column *or* filter value)
-      # instead of erroring, so a stray non-date fails soft (dropped by the
-      # keep[is.na] step) rather than aborting the whole render.
-      "after" = .as_date(col) > .as_date(f$value),
-      "onOrAfter" = .as_date(col) >= .as_date(f$value),
-      "before" = .as_date(col) < .as_date(f$value),
-      "onOrBefore" = .as_date(col) <= .as_date(f$value),
-      "isEmpty" = is.na(col) | as.character(col) == "",
-      "isNotEmpty" = !is.na(col) & as.character(col) != "",
-      rep(TRUE, nrow(data))
-    )
+    keep <- fn(data[[f$field]], f$value)
     keep[is.na(keep)] <- FALSE
     keep_vectors[[length(keep_vectors) + 1L]] <- keep
   }
 
-  # Quick filter (the toolbar search box). Mirrors MUI's default client-side
-  # semantics: each search term must appear — case-insensitive substring — in
-  # at least one column; terms combine per quickFilterLogicOperator ("and" by
-  # default); and the result is ANDed with the regular filter items. The `id`
-  # column is skipped to match the auto-generated columns, which never
-  # display it (an auto-injected 1..n id would otherwise match numeric terms).
-  quick_terms <- as.character(unlist(
-    params$filter_model$quickFilterValues %||% list()
-  ))
-  quick_terms <- quick_terms[!is.na(quick_terms) & nzchar(quick_terms)]
-  quick_keep <- NULL
-  if (length(quick_terms) > 0) {
-    search_cols <- setdiff(names(data), "id")
-    per_term <- lapply(quick_terms, function(term) {
-      hits <- lapply(search_cols, function(nm) {
-        grepl(tolower(term), tolower(as.character(data[[nm]])), fixed = TRUE)
-      })
-      if (length(hits) == 0) rep(FALSE, nrow(data)) else Reduce(`|`, hits)
-    })
-    quick_logic <- params$filter_model$quickFilterLogicOperator %||% "and"
-    quick_keep <- if (identical(quick_logic, "or")) {
-      Reduce(`|`, per_term)
-    } else {
-      Reduce(`&`, per_term)
-    }
-    quick_keep[is.na(quick_keep)] <- FALSE
-  }
-
   combined <- NULL
   if (length(keep_vectors) > 0) {
-    combined <- if (identical(logic_op, "or")) {
-      Reduce(`|`, keep_vectors)
-    } else {
-      Reduce(`&`, keep_vectors)
-    }
+    combined <- Reduce(if (identical(logic_op, "or")) `|` else `&`, keep_vectors)
   }
+  quick_keep <- .quick_filter(data, params)
   if (!is.null(quick_keep)) {
     combined <- if (is.null(combined)) quick_keep else combined & quick_keep
   }
@@ -456,14 +489,13 @@ processGridParams <- function(data, params, pageSize = 100L) {
   list(rows = page_data, rowCount = total_rows)
 }
 
-# Memoize the sort/filter pass for DataGridServer()'s automatic mode. In auto
-# mode the user's full `rows` is re-processed on every render, and a page change
-# *is* a render — so without this, paging through a sorted 100k-row frame
-# re-runs order() over all rows on every click. Cache key: the sort and filter
+# Memoize the sort/filter pass for DataGridServer(rows = ...). The full `rows`
+# is re-processed for every page request, so without this, paging through a
+# sorted 100k-row frame re-runs order() over all rows on every click. Cache key: the sort and filter
 # models plus the source frame itself (compared with identical(), which is a
 # single linear pass versus the O(n log n) re-sort it avoids). Storing the
 # source and processed frames trades memory for speed; for very large data
-# prefer manual mode (pass rowCount) so R never holds the full frame.
+# prefer getRows so R never holds the full frame.
 .memoized_sort_filter <- function(session, inputId, rows, params) {
   sort_model   <- params$sort_model                     %||% list()
   filter_items <- params$filter_model$items             %||% list()
@@ -475,107 +507,124 @@ processGridParams <- function(data, params, pageSize = 100L) {
       length(quick_terms) == 0)) {
     return(.apply_sort_filter(rows, params))
   }
-  filter_model <- params$filter_model %||% list(items = list())
+  # Everything .apply_sort_filter reads, so the cache can never be stale.
+  key <- list(
+    sort = sort_model,
+    filter = params$filter_model %||% list(items = list()),
+    quick_fields = params$quick_filter_fields
+  )
   cache <- session$userData$.datagrid_sortfilter_cache %||% list()
   entry <- cache[[inputId]]
   if (!is.null(entry) &&
-    identical(entry$sort, sort_model) &&
-    identical(entry$filter, filter_model) &&
+    identical(entry$key, key) &&
     identical(entry$source, rows)) {
     return(entry$processed)
   }
   processed <- .apply_sort_filter(rows, params)
-  cache[[inputId]] <- list(
-    sort = sort_model, filter = filter_model,
-    source = rows, processed = processed
-  )
+  cache[[inputId]] <- list(key = key, source = rows, processed = processed)
   session$userData$.datagrid_sortfilter_cache <- cache
   processed
 }
 
 #' Server-Side DataGrid
 #'
-#' A DataGrid component with server-side pagination, sorting, and filtering.
-#' The component sends pagination, sort, and filter state to R via a Shiny input.
+#' A DataGrid component with server-side pagination, sorting, and filtering,
+#' built on MUI X Data Grid's own server-side
+#' \href{https://mui.com/x/react-data-grid/server-side-data/}{data source}:
+#' whenever the user changes page, sorts, or filters, the grid requests that
+#' page from R, and R answers with only those rows.
 #'
-#' Pass the full dataset via \code{rows} — just like \code{DataGrid()} —
-#' and \code{DataGridServer()} handles pagination, sorting, and filtering
-#' automatically. For manual control (e.g. database queries), supply
-#' pre-sliced \code{rows} together with an explicit \code{rowCount}.
+#' Pass the full dataset via \code{rows} — just like \code{DataGrid()} — and
+#' \code{DataGridServer()} pages, sorts, and filters it in R (see
+#' \code{\link{processGridParams}}). To produce each page yourself (e.g. from a
+#' database query), pass \code{getRows}: MUI's own data source contract, a
+#' function that receives the grid's request and returns that page.
 #'
 #' @section Lifecycle:
 #' \strong{Experimental.} \code{DataGridServer()} (together with
-#' \code{\link{processGridParams}}) is \emph{specific to this R package} and has
-#' no equivalent in MUI X Data Grid: MUI ships only the building blocks
-#' (\code{paginationMode = "server"} plus callbacks) and leaves the data layer
-#' to you. This wrapper supplies that layer in R, and in doing so encodes a
-#' number of opinionated decisions that may change in future releases. Pin the
-#' package version if you rely on the current behavior. Decisions worth
-#' knowing about:
+#' \code{\link{processGridParams}}) connects MUI's data source to R and may
+#' change in future releases. Pin the package version if you rely on the
+#' current behavior. Decisions worth knowing about:
 #' \itemize{
-#'   \item Mode is selected by the presence of \code{rowCount}: supply it to
-#'     pass a pre-sliced page (manual mode); omit it to let the full
-#'     \code{rows} be paginated automatically.
+#'   \item Each request is answered over HTTP, through a session-scoped
+#'     endpoint (\code{session$registerDataObj()}, as DT does for server-side
+#'     tables). Paging therefore does not re-run the \code{renderReact()} that
+#'     created the grid; re-running it (e.g. because \code{rows} changed)
+#'     reloads the current page.
+#'   \item \code{getRows} is called outside a reactive context, with reactive
+#'     values isolated. Read the values it depends on (e.g. \code{input$year})
+#'     in the \code{renderReact()} body, so a change re-renders the grid and
+#'     reloads the page.
 #'   \item Changing the sort or any filter resets the grid to the first page.
+#'   \item Each \code{DataGridServer()} needs its own \code{inputId}; two grids
+#'     sharing one would overwrite each other's state, as with any Shiny input.
 #'   \item Unrecognized filter operators pass all rows through with a warning
 #'     (see \code{\link{processGridParams}}).
-#'   \item When \code{rows} has no \code{id} column, ids are generated
-#'     positionally and are \emph{not} stable across sort/filter changes.
-#'     Supply a stable, unique \code{id} column if you use row selection.
+#'   \item When rows have no \code{id} column, ids are generated positionally
+#'     and are \emph{not} stable across sort/filter changes. Supply a stable,
+#'     unique \code{id} column if you use row selection.
 #'   \item \code{initialPageSize}, \code{initialState}, and any initial sort or
-#'     filter seed the grid \emph{only on the first render}. The React component
-#'     reads them once when it mounts, so changing them reactively afterwards
+#'     filter seed the grid \emph{only on the first render}. MUI reads them
+#'     once when the grid mounts, so changing them reactively afterwards
 #'     (e.g. from a \code{selectInput}) has no effect on the already-mounted
 #'     grid. To change page size after mount, drive it from the grid's own
 #'     controls rather than re-rendering with a new \code{initialPageSize}.
-#'     A \code{paginationModel} inside a user-supplied \code{initialState} is
-#'     honored by the first automatic render, so the served page matches what
-#'     the grid displays from the start.
 #'   \item A running Shiny session is required: in a static document the grid
 #'     renders its first page but pagination, sorting, and filtering have
 #'     nothing to respond to them. Use \code{DataGrid()} for static documents.
+#'   \item \strong{Defunct:} passing a pre-sliced page in \code{rows} together
+#'     with \code{rowCount}, re-rendered from \code{input$<inputId>}, now
+#'     errors: those rows could belong to another request than the one the
+#'     grid's footer described. Use \code{getRows} instead, e.g.
+#'     \code{getRows = function(params) processGridParams(data, params)}.
 #' }
 #'
-#' @param inputId Character. The Shiny input ID. When pagination, sorting, or
-#'   filtering changes, the new state is available as \code{input$<inputId>}
-#'   in the server. The value is a list with elements \code{pagination_model}
-#'   (list with \code{page} and \code{pageSize}), \code{sort_model} (list of
-#'   sort items), and \code{filter_model} (list with \code{items},
+#' @param inputId Character. The Shiny input ID. On every data request the
+#'   grid's state is available as \code{input$<inputId>} in the server, a list
+#'   with elements \code{pagination_model} (list with \code{page} and
+#'   \code{pageSize}), \code{sort_model} (list of sort items), and
+#'   \code{filter_model} (list with \code{items}, the filters MUI applies,
 #'   \code{logicOperator}, and — when the toolbar quick filter is used —
-#'   \code{quickFilterValues}).
-#' @param rows A data.frame. Pass the \strong{full} dataset (like
-#'   \code{DataGrid()}) and let \code{DataGridServer()} handle pagination
-#'   automatically, or pass a pre-sliced page together with an explicit
-#'   \code{rowCount} for manual control.
+#'   \code{quickFilterValues}). While the quick filter is active the list also
+#'   holds \code{quick_filter_fields}: the columns it searches, each a list
+#'   with \code{field} and \code{type}. \code{getRows} receives the same list.
+#' @param rows A data.frame with the \strong{full} dataset (like
+#'   \code{DataGrid()}); \code{DataGridServer()} pages, sorts, and filters it.
+#'   Leave \code{NULL} when using \code{getRows}.
 #' @param columns Column definitions (list of lists). If NULL, auto-generated
 #'   from \code{names(rows)}, with each column's \code{type} inferred from its
-#'   R class (see \code{\link{DataGrid}}).
-#' @param rowCount Integer. When provided, \code{rows} is assumed to be
-#'   already paginated and \code{rowCount} is used as the total row count
-#'   (manual mode). When \code{NULL} (default), pagination is handled
-#'   automatically from the full \code{rows} dataset.
-#' @param loading Logical. Whether to show the loading indicator. If
-#'   \code{NULL}, MUI defaults to \code{FALSE}.
+#'   R class (see \code{\link{DataGrid}}). Required with \code{getRows}.
+#' @param rowCount \strong{Defunct.} Passing it is an error; use
+#'   \code{getRows} instead.
+#' @param loading Logical. Usually not needed: the grid shows its loading
+#'   overlay automatically while it waits for R. \code{TRUE} forces it on.
 #' @param initialPageSize Integer. Convenience for setting the initial page
 #'   size. Builds MUI's \code{initialState} prop. If \code{NULL}, MUI defaults
-#'   to 100. Also sets the page size for the first automatic render before the
-#'   grid has sent state. Must be included in \code{pageSizeOptions}. Ignored
-#'   (with a warning) when you pass your own \code{initialState} via
-#'   \code{...} — the \code{paginationModel} in your \code{initialState} then
-#'   governs both the grid and the first automatic render.
+#'   to 100. Must be included in \code{pageSizeOptions}. Ignored (with a
+#'   warning) when you pass your own \code{initialState} via \code{...}.
 #' @param pageSizeOptions Integer vector. Available page size options. If
 #'   \code{NULL}, MUI defaults to \code{c(25, 50, 100)}.
-#' @param filterDebounce Integer. Milliseconds to debounce filter input before
-#'   sending state to R. If \code{NULL}, defaults to 300 ms.
+#' @param filterDebounce Integer. Milliseconds the grid waits after typing in
+#'   the filter panel before requesting data from R. If \code{NULL}, defaults
+#'   to 300 ms. Superseded by MUI's own \code{filterDebounceMs} prop, which you
+#'   can pass via \code{...} and which takes precedence. The toolbar quick
+#'   filter has its own debounce.
+#' @param getRows A function taking the grid's request (\code{params}, the
+#'   list described under \code{inputId}) and returning that page as
+#'   \code{list(rows = <data.frame>, rowCount = <total number of matching
+#'   rows>)}, the shape \code{\link{processGridParams}} returns. Mirrors MUI's
+#'   \code{dataSource.getRows}. Use it instead of \code{rows} to query a
+#'   database or API page by page.
 #' @param ... Additional props passed directly to the MUI DataGrid component.
-#'   Note: \code{paginationMode}, \code{sortingMode}, \code{filterMode}, and
-#'   \code{pagination} are set automatically and should not be overridden.
+#'   Note: MUI's server-side data source forces \code{paginationMode},
+#'   \code{sortingMode}, and \code{filterMode} to \code{"server"} and
+#'   \code{pagination} to \code{TRUE}; passing them only produces a warning.
 #'
 #' @return A shiny.react element.
 #'
 #' @examples
 #' \dontrun{
-#' # Simple usage: pass the full dataset, pagination is handled automatically
+#' # Pass the full dataset: R pages, sorts, and filters it
 #' output$grid <- renderReact({
 #'   DataGridServer("grid_params",
 #'     rows = my_data,
@@ -584,12 +633,11 @@ processGridParams <- function(data, params, pageSize = 100L) {
 #'   )
 #' })
 #'
-#' # Manual usage: handle pagination yourself (e.g. database queries)
+#' # Produce each page yourself (e.g. from a database query)
 #' output$grid <- renderReact({
-#'   result <- processGridParams(my_data, input$grid_params, pageSize = 10L)
 #'   DataGridServer("grid_params",
-#'     rows = result$rows,
-#'     rowCount = result$rowCount,
+#'     columns = list(list(field = "name"), list(field = "value", type = "number")),
+#'     getRows = function(params) processGridParams(my_data, params),
 #'     initialPageSize = 10L,
 #'     pageSizeOptions = c(10L, 25L, 50L)
 #'   )
@@ -607,9 +655,42 @@ DataGridServer <- function(
   initialPageSize = NULL,
   pageSizeOptions = NULL,
   filterDebounce = NULL,
+  getRows = NULL,
   ...
 ) {
+  # Defunct: a pre-sliced page re-rendered from input$<inputId> could show rows
+  # from another request than the one the footer described. Kept as an
+  # argument so old code fails with directions instead of "unused argument".
+  if (!is.null(rowCount)) {
+    stop(
+      "`rowCount` is no longer supported in DataGridServer(). Produce each ",
+      "page with `getRows` instead, e.g. ",
+      "`getRows = function(params) processGridParams(data, params)` (with ",
+      "`columns`), or pass the full data frame as `rows`. See ",
+      "\"Migrating from rowCount\" in vignette(\"server-side-data\", ",
+      "package = \"muiDataGrid\").",
+      call. = FALSE
+    )
+  }
   .validate_rows(rows)
+  if (!is.null(getRows)) {
+    if (!is.function(getRows)) {
+      stop("`getRows` must be a function.", call. = FALSE)
+    }
+    if (!is.null(rows)) {
+      stop(
+        "Use either `rows` or `getRows`, not both (`getRows` produces the rows).",
+        call. = FALSE
+      )
+    }
+    if (is.null(columns)) {
+      stop(
+        "`columns` is required with `getRows`: there is no data to infer ",
+        "them from until the grid requests its first page.",
+        call. = FALSE
+      )
+    }
+  }
   # Validate against the *effective* options: when pageSizeOptions is not
   # supplied, MUI defaults to c(25, 50, 100), so an initialPageSize outside that
   # set would still fail silently in the browser. Check against the default too.
@@ -628,24 +709,24 @@ DataGridServer <- function(
   dots <- list(...)
   protected <- c("paginationMode", "sortingMode", "filterMode", "pagination")
   overridden <- intersect(names(dots), protected)
+  # MUI's data source forces these to server-side pagination, sorting, and
+  # filtering, so a user value would be silently ignored; say so instead.
   if (length(overridden) > 0) {
     warning(
       "Ignoring protected props set automatically by DataGridServer(): ",
-      paste(overridden, collapse = ", ")
+      paste(overridden, collapse = ", "),
+      call. = FALSE
     )
     dots[overridden] <- NULL
   }
   # A user-supplied initialState (via ...) wins; otherwise build one from
   # initialPageSize. Including both would create a duplicate-named prop in which
-  # the built one silently shadows the user's, so we keep exactly one — and the
-  # first automatic render slices the page that initialState describes (see
-  # below), so initialPageSize plays no role at all when initialState is given.
+  # the built one silently shadows the user's, so we keep exactly one.
   user_initial_state <- "initialState" %in% names(dots)
   if (user_initial_state && !is.null(initialPageSize)) {
     warning(
       "Both 'initialState' (via ...) and 'initialPageSize' were supplied. ",
-      "Using your 'initialState' (it seeds the grid and the first automatic ",
-      "render); 'initialPageSize' is ignored.",
+      "Using your 'initialState'; 'initialPageSize' is ignored.",
       call. = FALSE
     )
   }
@@ -662,73 +743,53 @@ DataGridServer <- function(
       "For static documents use DataGrid() instead."
     )
   }
-  if (!is.null(session)) {
-    # Detect two *different live* outputs sharing one inputId (their Shiny
-    # inputs would otherwise clobber each other). The registry is reset at the
-    # end of every flush (scheduled below), so entries owned by outputs that are
-    # no longer rendered — e.g. removed via removeUI() or replaced by a
-    # renderUI() swap — do not linger and falsely reject a freed inputId on a
-    # later flush. Genuine duplicates still collide because conflicting outputs
-    # render within the same flush.
-    registry <- session$userData$.datagrid_input_registry
-    if (is.null(registry)) registry <- list()
-    current_output <- shiny::getCurrentOutputInfo()$name
-    claimed_by <- registry[[inputId]]
-    if (!is.null(claimed_by) && !identical(claimed_by, current_output)) {
-      stop(
-        'inputId "', inputId, '" is already used by output "', claimed_by, '". ',
-        "Each DataGridServer() must have a unique inputId."
-      )
+  # How each data request is answered: getRows, or paging the full `rows`.
+  # NULL for a grid without data.
+  fetch <- if (!is.null(getRows)) {
+    function(params) {
+      .check_page(shiny::withReactiveDomain(session, shiny::isolate(getRows(params))))
     }
-    registry[[inputId]] <- current_output
-    session$userData$.datagrid_input_registry <- registry
-    # Schedule a single reset for the end of this flush (guarded so we register
-    # at most one callback per flush regardless of how many grids render).
-    if (is.null(session$userData$.datagrid_registry_reset_scheduled)) {
-      session$userData$.datagrid_registry_reset_scheduled <- TRUE
-      session$onFlushed(
-        function() {
-          session$userData$.datagrid_input_registry <- list()
-          session$userData$.datagrid_registry_reset_scheduled <- NULL
-        },
-        once = TRUE
+  } else if (!is.null(rows)) {
+    full <- rows
+    function(params) {
+      .slice_page(
+        .memoized_sort_filter(session, inputId, full, params),
+        params$pagination_model$page %||% 0L,
+        params$pagination_model$pageSize %||% 100L
       )
     }
   }
-  # Manual mode (rowCount supplied) expects a single pre-sliced page. A page
-  # can never contain more rows than the total, so nrow(rows) > rowCount almost
-  # always means the full, unsliced dataset was passed by mistake.
-  if (!is.null(rowCount) && !is.null(rows) && nrow(rows) > rowCount) {
-    warning(
-      "rowCount (", rowCount, ") is smaller than nrow(rows) (", nrow(rows),
-      "). In manual mode 'rows' must be a single pre-sliced page. Did you mean ",
-      "to omit 'rowCount' so DataGridServer() paginates the full dataset ",
-      "automatically?",
-      call. = FALSE
-    )
+  # A test session (shiny::testServer) registers no endpoint and returns NULL.
+  data_url <- if (!is.null(fetch) && !is.null(session)) {
+    .register_rows_endpoint(session, inputId, fetch)
   }
-  # Automatic mode: rowCount not supplied, so sort/filter/paginate internally.
-  # The sort/filter pass is memoized per (session, inputId) so a pagination-only
-  # change re-slices a cached frame instead of re-sorting the whole dataset.
-  if (is.null(rowCount) && !is.null(rows)) {
-    params <- if (!is.null(session)) session$input[[inputId]] else NULL
-    # Before the grid has sent any state (params NULL), slice the exact page the
-    # React component will display. It seeds its controlled paginationModel from
-    # the initialState prop it receives — the user's own (via ...) or the one
-    # built from initialPageSize — falling back to MUI's defaults (page 0,
-    # pageSize 100); see ServerSideDataGrid.jsx. Mirroring that here keeps the
-    # served rows and the pagination footer consistent on first paint.
-    init_pm <- if (user_initial_state) {
-      dots$initialState$pagination$paginationModel
-    } else if (!is.null(initialPageSize)) {
-      list(page = 0L, pageSize = as.integer(initialPageSize))
+  if (!is.null(fetch)) {
+    if (!is.null(data_url)) {
+      # The grid fetches every page itself; send only the columns' structure.
+      if (!is.null(rows)) rows <- rows[0, , drop = FALSE]
+    } else {
+      # Nothing will request pages (static document, or a test session without
+      # HTTP endpoints): render the page the grid opens on — the requested one
+      # if a test set input$<inputId>, else initialState's paginationModel,
+      # else initialPageSize, else MUI's defaults (page 0, pageSize 100).
+      init_pm <- if (user_initial_state) {
+        dots$initialState$pagination$paginationModel
+      } else if (!is.null(initialPageSize)) {
+        list(page = 0L, pageSize = as.integer(initialPageSize))
+      }
+      params <- if (!is.null(session)) session$input[[inputId]]
+      params <- params %||% list(
+        pagination_model = list(
+          page = init_pm$page %||% 0L,
+          pageSize = init_pm$pageSize %||% 100L
+        ),
+        sort_model = list(),
+        filter_model = list(items = list())
+      )
+      page <- fetch(params)
+      rows <- page$rows
+      rowCount <- page$rowCount
     }
-    page      <- params$pagination_model$page     %||% init_pm$page     %||% 0L
-    page_size <- params$pagination_model$pageSize %||% init_pm$pageSize %||% 100L
-    processed <- .memoized_sort_filter(session, inputId, rows, params)
-    result   <- .slice_page(processed, page, page_size)
-    rows     <- result$rows
-    rowCount <- result$rowCount
   }
   if (is.null(columns) && !is.null(rows)) {
     columns <- .auto_columns(rows)
@@ -738,6 +799,7 @@ DataGridServer <- function(
   rows <- .inject_id(rows)
   base <- list(
     inputId = inputId,
+    dataUrl = data_url,
     rows = rows,
     columns = columns,
     rowCount = if (!is.null(rowCount)) as.integer(rowCount),
@@ -745,11 +807,7 @@ DataGridServer <- function(
     pageSizeOptions = if (!is.null(pageSizeOptions)) {
       as.list(as.integer(pageSizeOptions))
     },
-    filterDebounce = filterDebounce,
-    paginationMode = "server",
-    sortingMode = "server",
-    filterMode = "server",
-    pagination = TRUE
+    filterDebounce = filterDebounce
   )
   if (!user_initial_state && !is.null(initialPageSize)) {
     base$initialState <- list(
@@ -770,4 +828,71 @@ DataGridServer <- function(
   )
   class(tag) <- c("muiDataGrid", class(tag))
   tag
+}
+
+# Answer the grid's data requests (MUI's dataSource.getRows) over HTTP, the way
+# DT serves server-side tables: session$registerDataObj() returns a
+# session-scoped URL the grid POSTs each request to, and `fetch(params)` turns
+# the request into a page. Registering again under the same name (a re-render)
+# replaces the handler and returns a new URL, which makes the grid reload.
+.register_rows_endpoint <- function(session, inputId, fetch) {
+  session$registerDataObj(
+    name = session$ns(inputId),
+    data = NULL,
+    filterFunc = .rows_endpoint_handler(inputId, fetch)
+  )
+}
+
+# The endpoint's request handler: parse the grid's JSON request, answer it
+# with fetch(params) as JSON, or with a 500 and the error message.
+.rows_endpoint_handler <- function(inputId, fetch) {
+  function(data, req) {
+    result <- tryCatch(
+      {
+        params <- jsonlite::fromJSON(
+          rawToChar(req$rook.input$read()),
+          simplifyVector = FALSE
+        )
+        page <- fetch(params)
+        list(rows = .inject_id(page$rows), rowCount = page$rowCount)
+      },
+      error = function(e) e
+    )
+    status <- 200L
+    if (inherits(result, "error")) {
+      # Surface it in the R console too: the browser only shows an empty grid.
+      warning(
+        "DataGridServer(\"", inputId, "\"): ", conditionMessage(result),
+        call. = FALSE
+      )
+      status <- 500L
+      result <- list(error = conditionMessage(result))
+    }
+    shiny::httpResponse(
+      status, "application/json", .to_json(result),
+      headers = list("Cache-Control" = "no-store")
+    )
+  }
+}
+
+# Same JSON options shiny.react uses for props, so a page fetched over HTTP
+# renders exactly like rows passed as a prop (dates, NA, number precision).
+.to_json <- function(x) {
+  jsonlite::toJSON(
+    x,
+    auto_unbox = TRUE, json_verbatim = TRUE, Date = "ISO8601",
+    POSIXt = "ISO8601", null = "null", na = "null"
+  )
+}
+
+.check_page <- function(page) {
+  if (!is.list(page) || !is.data.frame(page$rows) ||
+    !is.numeric(page$rowCount) || length(page$rowCount) != 1) {
+    stop(
+      "`getRows` must return list(rows = <data.frame>, ",
+      "rowCount = <total number of matching rows>).",
+      call. = FALSE
+    )
+  }
+  page
 }
