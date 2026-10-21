@@ -47,23 +47,22 @@ overlay automatically while it waits for R. \code{TRUE} forces it on.}
 
 \item{initialPageSize}{Integer. Convenience for setting the initial page
 size. Builds MUI's \code{initialState} prop. If \code{NULL}, MUI defaults
-to 100. Also sets the page size for the first automatic render before the
-grid has sent state. Must be included in \code{pageSizeOptions}. Ignored
-(with a warning) when you pass your own \code{initialState} via
-\code{...} — the \code{paginationModel} in your \code{initialState} then
-governs both the grid and the first automatic render.}
+to 100. Must be included in \code{pageSizeOptions}. Ignored (with a
+warning) when you pass your own \code{initialState} via \code{...}.}
 
 \item{pageSizeOptions}{Integer vector. Available page size options. If
 \code{NULL}, MUI defaults to \code{c(25, 50, 100)}.}
 
 \item{filterDebounce}{Integer. Milliseconds the grid waits after typing in
-the filter panel before requesting data from R (MUI's
-\code{filterDebounceMs}). If \code{NULL}, defaults to 300 ms. The toolbar
-quick filter has its own debounce.}
+the filter panel before requesting data from R. If \code{NULL}, defaults
+to 300 ms. Superseded by MUI's own \code{filterDebounceMs} prop, which you
+can pass via \code{...} and which takes precedence. The toolbar quick
+filter has its own debounce.}
 
 \item{...}{Additional props passed directly to the MUI DataGrid component.
-Note: \code{paginationMode}, \code{sortingMode}, \code{filterMode}, and
-\code{pagination} are set automatically and should not be overridden.}
+Note: MUI's server-side data source forces \code{paginationMode},
+\code{sortingMode}, and \code{filterMode} to \code{"server"} and
+\code{pagination} to \code{TRUE}; passing them only produces a warning.}
 }
 \value{
 A shiny.react element.
@@ -101,14 +100,14 @@ knowing about:
     positionally and are \emph{not} stable across sort/filter changes.
     Supply a stable, unique \code{id} column if you use row selection.
   \item \code{initialPageSize}, \code{initialState}, and any initial sort or
-    filter seed the grid \emph{only on the first render}. The React component
-    reads them once when it mounts, so changing them reactively afterwards
+    filter seed the grid \emph{only on the first render}. MUI reads them
+    once when the grid mounts, so changing them reactively afterwards
     (e.g. from a \code{selectInput}) has no effect on the already-mounted
     grid. To change page size after mount, drive it from the grid's own
     controls rather than re-rendering with a new \code{initialPageSize}.
-    A \code{paginationModel} inside a user-supplied \code{initialState} is
-    honored by the first automatic render, so the served page matches what
-    the grid displays from the start.
+  \item In a Shiny session the grid requests its first page from R as soon
+    as it mounts, like every later page, so it opens on exactly the page
+    its \code{initialState} describes.
   \item A running Shiny session is required: in a static document the grid
     renders its first page but pagination, sorting, and filtering have
     nothing to respond to them. Use \code{DataGrid()} for static documents.

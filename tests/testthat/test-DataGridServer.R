@@ -106,8 +106,8 @@ test_that("DataGridServer warns and strips protected props from ...", {
     ),
     "paginationMode"
   )
-  props <- get_props(result)
-  expect_equal(props$paginationMode, "server")
+  # Stripped: the user's "client" never reaches MUI, which forces "server".
+  expect_null(get_props(result)$paginationMode)
 })
 
 test_that("DataGridServer excludes id from auto-generated columns", {
@@ -186,17 +186,30 @@ test_that("DataGridServer initialState is NULL when initialPageSize is NULL", {
   expect_null(props$initialState)
 })
 
-test_that("DataGridServer sets server-mode props", {
+test_that("DataGridServer leaves the server-mode props to MUI's data source", {
   df <- data.frame(id = 1, name = "Luke")
   props <- get_props(DataGridServer(
     inputId = "grid",
     rows = df,
     rowCount = 1L
   ))
-  expect_equal(props$paginationMode, "server")
-  expect_equal(props$sortingMode, "server")
-  expect_equal(props$filterMode, "server")
-  expect_true(props$pagination)
+  expect_null(props$paginationMode)
+  expect_null(props$sortingMode)
+  expect_null(props$filterMode)
+  expect_null(props$pagination)
+})
+
+test_that("DataGridServer sends only the column structure before the first request", {
+  # In a session the grid requests its first page itself, so R must not guess
+  # which page that is.
+  df <- data.frame(name = paste("Row", 1:30), value = 1:30)
+  session <- shiny::MockShinySession$new()
+  props <- get_props(shiny::withReactiveDomain(session, shiny::isolate(
+    DataGridServer("grid", rows = df, initialPageSize = 25)
+  )))
+  expect_length(props$rows, 0)
+  expect_equal(vapply(props$columns, function(c) c$field, ""), c("name", "value"))
+  expect_equal(props$columns[[2]]$type, "number")
 })
 
 test_that("DataGridServer passes loading prop", {

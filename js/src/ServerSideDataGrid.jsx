@@ -1,33 +1,22 @@
 import React, { useEffect, useRef, useMemo } from 'react';
 import {
-  DataGrid, useGridApiRef, gridColumnVisibilityModelSelector, gridFilterModelSelector,
+  DataGrid,
+  useGridApiRef,
+  gridColumnVisibilityModelSelector,
+  gridFilterActiveItemsSelector,
+  gridFilterModelSelector,
 } from '@mui/x-data-grid';
 
 // Server-side grid backed by MUI's own data source: MUI owns the pagination,
-// sort, and filter state, resets to the first page, coalesces changes into one
-// request, shows the loading overlay, and drops stale responses. This
-// component only bridges MUI's getRows() promise to Shiny: each request is
-// posted as input$<inputId> with a request_id, R re-renders with that page,
-// and DataGridServer() echoes the id back as `requestId` to resolve it.
+// sort, and filter state, resets to the first page, forces the server modes,
+// shows the loading overlay, and drops stale responses. This component only
+// bridges MUI's getRows() promise to Shiny: each request is posted as
+// input$<inputId> with a request_id, R re-renders with that page, and
+// DataGridServer() echoes the id back as `requestId` to resolve it.
 
 // How long a request waits for a replacement before it is posted to R (see
 // getRows). Small next to a Shiny round-trip.
 const COALESCE_MS = 50;
-
-// The filter items MUI actually applies: a known operator on a known column,
-// with a value unless the operator takes none (isEmpty). Mirrors MUI's
-// gridFilterActiveItemsSelector.
-function activeFilterItems(filterModel, api) {
-  return (filterModel.items ?? []).filter((item) => {
-    const column = item.field ? api.getColumn(item.field) : undefined;
-    const operator = column?.filterOperators?.find((op) => op.value === item.operator);
-    if (!operator) return false;
-    const hasValue = Array.isArray(item.value)
-      ? item.value.length > 0
-      : item.value != null && item.value.toString() !== '';
-    return !operator.InputComponent || hasValue;
-  });
-}
 
 // The columns MUI's quick filter searches: visible ones (unless the model opts
 // out via quickFilterExcludeHiddenColumns) whose type has a quick filter
@@ -44,30 +33,14 @@ function quickFilterFields(filterModel, apiRef) {
     .map((col) => ({ field: col.field, type: col.type ?? 'string' }));
 }
 
-// What R's result depends on. Inactive filter items (an operator picked but no
-// value yet, the row the filter panel adds on open) filter nothing, so a
-// request that differs only in those is answered without asking R.
-function signature({ paginationModel, sortModel, filterModel }, apiRef) {
-  return JSON.stringify([
-    paginationModel,
-    sortModel,
-    activeFilterItems(filterModel, apiRef.current),
-    filterModel.logicOperator ?? 'and',
-    quickFilterFields(filterModel, apiRef) ?? [],
-    filterModel.quickFilterValues?.filter(Boolean) ?? [],
-    filterModel.quickFilterLogicOperator ?? 'and',
-  ]);
-}
-
 function ServerSideDataGrid({
   inputId, rows, rowCount, requestId, loading, filterDebounce, ...otherProps
 }) {
   const apiRef = useGridApiRef();
   // Latest page R rendered, read when a request can be answered locally.
   const served = useRef({ rows, rowCount });
-  // Signature of the params `served` answers; null until the first request.
+  // Signature of the request `served` answers; null until R answered one.
   const servedSignature = useRef(null);
-  const firstRequest = useRef(true);
   const pending = useRef(new Map()); // request id -> { resolve, sig }
   const lastId = useRef(0);
   const sendTimer = useRef(null);
@@ -76,47 +49,42 @@ function ServerSideDataGrid({
 
   const dataSource = useMemo(() => ({
     getRows: (params) => new Promise((resolve) => {
-      const sig = signature(params, apiRef);
-      const answerLocally = () => {
-        servedSignature.current = sig;
-        resolve(served.current);
-      };
       // Static documents have no Shiny: only the first page R rendered exists.
       if (!window.Shiny?.setInputValue) {
-        answerLocally();
+        resolve(served.current);
         return;
       }
-      // R's first render served the initial page, unsorted and unfiltered (see
-      // DataGridServer); only an initialState sort or filter needs a request.
-      if (firstRequest.current) {
-        firstRequest.current = false;
-        const { sortModel, filterModel } = params;
-        if (sortModel.length === 0 &&
-          activeFilterItems(filterModel, apiRef.current).length === 0 &&
-          !filterModel.quickFilterValues?.some(Boolean)) {
-          answerLocally();
-          return;
-        }
-      } else if (sig === servedSignature.current && pending.current.size === 0) {
-        answerLocally();
+      // getRows() runs on the grid's current state, so MUI's own selector
+      // gives the filter items it applies: inactive ones (an operator picked
+      // but no value yet, the row the filter panel adds on open) are left out.
+      const filterModel = {
+        ...params.filterModel,
+        items: gridFilterActiveItemsSelector(apiRef),
+      };
+      const fields = quickFilterFields(filterModel, apiRef);
+      const sig = JSON.stringify([
+        params.paginationModel, params.sortModel, filterModel, fields,
+      ]);
+      // Nothing R's answer depends on changed: reuse it.
+      if (sig === servedSignature.current && pending.current.size === 0) {
+        resolve(served.current);
         return;
       }
       lastId.current += 1;
       pending.current.set(lastId.current, { resolve, sig });
+      const payload = {
+        pagination_model: params.paginationModel,
+        sort_model: params.sortModel,
+        filter_model: filterModel,
+        request_id: lastId.current,
+      };
+      if (fields) payload.quick_filter_fields = fields;
       // A sort or filter change away from page 0 makes MUI request twice: once
       // for the old page, then (a few ms later, after it resets to page 0) for
       // the new one. Holding each request briefly lets the second replace the
       // first, so R renders once. A replaced request stays pending and is
       // resolved, as stale, by the answer to the newer one.
       clearTimeout(sendTimer.current);
-      const payload = {
-        pagination_model: params.paginationModel,
-        sort_model: params.sortModel,
-        filter_model: params.filterModel,
-        request_id: lastId.current,
-      };
-      const fields = quickFilterFields(params.filterModel, apiRef);
-      if (fields) payload.quick_filter_fields = fields;
       sendTimer.current = setTimeout(() => {
         window.Shiny.setInputValue(inputId, payload, { priority: 'event' });
       }, COALESCE_MS);
@@ -147,20 +115,19 @@ function ServerSideDataGrid({
   // Hiding or showing a column changes which columns the quick filter searches,
   // but MUI does not refetch on it.
   useEffect(() => apiRef.current?.subscribeEvent('columnVisibilityModelChange', () => {
-    const filterModel = gridFilterModelSelector(apiRef);
-    if (filterModel.quickFilterValues?.some(Boolean)) {
+    if (gridFilterModelSelector(apiRef).quickFilterValues?.some(Boolean)) {
       apiRef.current.dataSource.fetchRows();
     }
   }), [apiRef]);
 
   return (
     <DataGrid
+      filterDebounceMs={filterDebounce ?? 300}
       {...otherProps}
       {...(loading != null && { loading })}
       apiRef={apiRef}
       dataSource={dataSource}
       dataSourceCache={null}
-      filterDebounceMs={filterDebounce ?? 300}
     />
   );
 }

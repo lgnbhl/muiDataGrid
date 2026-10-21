@@ -559,14 +559,14 @@ processGridParams <- function(data, params, pageSize = 100L) {
 #'     positionally and are \emph{not} stable across sort/filter changes.
 #'     Supply a stable, unique \code{id} column if you use row selection.
 #'   \item \code{initialPageSize}, \code{initialState}, and any initial sort or
-#'     filter seed the grid \emph{only on the first render}. The React component
-#'     reads them once when it mounts, so changing them reactively afterwards
+#'     filter seed the grid \emph{only on the first render}. MUI reads them
+#'     once when the grid mounts, so changing them reactively afterwards
 #'     (e.g. from a \code{selectInput}) has no effect on the already-mounted
 #'     grid. To change page size after mount, drive it from the grid's own
 #'     controls rather than re-rendering with a new \code{initialPageSize}.
-#'     A \code{paginationModel} inside a user-supplied \code{initialState} is
-#'     honored by the first automatic render, so the served page matches what
-#'     the grid displays from the start.
+#'   \item In a Shiny session the grid requests its first page from R as soon
+#'     as it mounts, like every later page, so it opens on exactly the page
+#'     its \code{initialState} describes.
 #'   \item A running Shiny session is required: in a static document the grid
 #'     renders its first page but pagination, sorting, and filtering have
 #'     nothing to respond to them. Use \code{DataGrid()} for static documents.
@@ -597,20 +597,19 @@ processGridParams <- function(data, params, pageSize = 100L) {
 #'   overlay automatically while it waits for R. \code{TRUE} forces it on.
 #' @param initialPageSize Integer. Convenience for setting the initial page
 #'   size. Builds MUI's \code{initialState} prop. If \code{NULL}, MUI defaults
-#'   to 100. Also sets the page size for the first automatic render before the
-#'   grid has sent state. Must be included in \code{pageSizeOptions}. Ignored
-#'   (with a warning) when you pass your own \code{initialState} via
-#'   \code{...} — the \code{paginationModel} in your \code{initialState} then
-#'   governs both the grid and the first automatic render.
+#'   to 100. Must be included in \code{pageSizeOptions}. Ignored (with a
+#'   warning) when you pass your own \code{initialState} via \code{...}.
 #' @param pageSizeOptions Integer vector. Available page size options. If
 #'   \code{NULL}, MUI defaults to \code{c(25, 50, 100)}.
 #' @param filterDebounce Integer. Milliseconds the grid waits after typing in
-#'   the filter panel before requesting data from R (MUI's
-#'   \code{filterDebounceMs}). If \code{NULL}, defaults to 300 ms. The toolbar
-#'   quick filter has its own debounce.
+#'   the filter panel before requesting data from R. If \code{NULL}, defaults
+#'   to 300 ms. Superseded by MUI's own \code{filterDebounceMs} prop, which you
+#'   can pass via \code{...} and which takes precedence. The toolbar quick
+#'   filter has its own debounce.
 #' @param ... Additional props passed directly to the MUI DataGrid component.
-#'   Note: \code{paginationMode}, \code{sortingMode}, \code{filterMode}, and
-#'   \code{pagination} are set automatically and should not be overridden.
+#'   Note: MUI's server-side data source forces \code{paginationMode},
+#'   \code{sortingMode}, and \code{filterMode} to \code{"server"} and
+#'   \code{pagination} to \code{TRUE}; passing them only produces a warning.
 #'
 #' @return A shiny.react element.
 #'
@@ -669,24 +668,24 @@ DataGridServer <- function(
   dots <- list(...)
   protected <- c("paginationMode", "sortingMode", "filterMode", "pagination")
   overridden <- intersect(names(dots), protected)
+  # MUI's data source forces these to server-side pagination, sorting, and
+  # filtering, so a user value would be silently ignored; say so instead.
   if (length(overridden) > 0) {
     warning(
       "Ignoring protected props set automatically by DataGridServer(): ",
-      paste(overridden, collapse = ", ")
+      paste(overridden, collapse = ", "),
+      call. = FALSE
     )
     dots[overridden] <- NULL
   }
   # A user-supplied initialState (via ...) wins; otherwise build one from
   # initialPageSize. Including both would create a duplicate-named prop in which
-  # the built one silently shadows the user's, so we keep exactly one — and the
-  # first automatic render slices the page that initialState describes (see
-  # below), so initialPageSize plays no role at all when initialState is given.
+  # the built one silently shadows the user's, so we keep exactly one.
   user_initial_state <- "initialState" %in% names(dots)
   if (user_initial_state && !is.null(initialPageSize)) {
     warning(
       "Both 'initialState' (via ...) and 'initialPageSize' were supplied. ",
-      "Using your 'initialState' (it seeds the grid and the first automatic ",
-      "render); 'initialPageSize' is ignored.",
+      "Using your 'initialState'; 'initialPageSize' is ignored.",
       call. = FALSE
     )
   }
@@ -720,23 +719,26 @@ DataGridServer <- function(
   # change re-slices a cached frame instead of re-sorting the whole dataset.
   if (is.null(rowCount) && !is.null(rows)) {
     params <- if (!is.null(session)) session$input[[inputId]] else NULL
-    # Before the grid has sent any state (params NULL), slice the exact page the
-    # grid will display: MUI seeds its pagination from the initialState prop —
-    # the user's own (via ...) or the one built from initialPageSize — falling
-    # back to its defaults (page 0, pageSize 100). The grid answers its first
-    # data request with this page instead of asking R again (see
-    # ServerSideDataGrid.jsx), so it must match.
-    init_pm <- if (user_initial_state) {
-      dots$initialState$pagination$paginationModel
-    } else if (!is.null(initialPageSize)) {
-      list(page = 0L, pageSize = as.integer(initialPageSize))
+    if (!is.null(session) && is.null(params)) {
+      # The grid requests its first page itself as soon as it mounts (MUI's
+      # data source), so until then send only the columns' structure.
+      rows <- rows[0, , drop = FALSE]
+    } else {
+      # Without a session nothing will ever request a page, so render the one
+      # the grid opens on: initialState's paginationModel, else initialPageSize,
+      # else MUI's defaults (page 0, pageSize 100).
+      init_pm <- if (user_initial_state) {
+        dots$initialState$pagination$paginationModel
+      } else if (!is.null(initialPageSize)) {
+        list(page = 0L, pageSize = as.integer(initialPageSize))
+      }
+      page      <- params$pagination_model$page     %||% init_pm$page     %||% 0L
+      page_size <- params$pagination_model$pageSize %||% init_pm$pageSize %||% 100L
+      processed <- .memoized_sort_filter(session, inputId, rows, params)
+      result   <- .slice_page(processed, page, page_size)
+      rows     <- result$rows
+      rowCount <- result$rowCount
     }
-    page      <- params$pagination_model$page     %||% init_pm$page     %||% 0L
-    page_size <- params$pagination_model$pageSize %||% init_pm$pageSize %||% 100L
-    processed <- .memoized_sort_filter(session, inputId, rows, params)
-    result   <- .slice_page(processed, page, page_size)
-    rows     <- result$rows
-    rowCount <- result$rowCount
   }
   if (is.null(columns) && !is.null(rows)) {
     columns <- .auto_columns(rows)
@@ -760,11 +762,7 @@ DataGridServer <- function(
     pageSizeOptions = if (!is.null(pageSizeOptions)) {
       as.list(as.integer(pageSizeOptions))
     },
-    filterDebounce = filterDebounce,
-    paginationMode = "server",
-    sortingMode = "server",
-    filterMode = "server",
-    pagination = TRUE
+    filterDebounce = filterDebounce
   )
   if (!user_initial_state && !is.null(initialPageSize)) {
     base$initialState <- list(

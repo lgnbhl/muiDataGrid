@@ -7,9 +7,20 @@
   its loading overlay automatically while it waits for R, so the `loading`
   argument is rarely needed. `input$<inputId>` gains a `request_id`, which
   `DataGridServer()` sends back automatically.
+* In a Shiny session the grid now requests its first page from R as soon as
+  it mounts, instead of R guessing which page it opens on. Grids using
+  `autoPageSize` or an `initialState` with only a `pageSize` now open on the
+  right page; the first page arrives one round-trip later.
+* `input$<inputId>$filter_model$items` now holds only the filters MUI
+  applies, as given by MUI's own selector (an item still waiting for a value
+  is left out).
 * `filterDebounce` now sets MUI's `filterDebounceMs`: the delay after typing
-  in the filter panel (still 300 ms by default). The toolbar quick filter
-  keeps its own debounce.
+  in the filter panel (still 300 ms by default). It is superseded by passing
+  `filterDebounceMs` itself via `...`, which takes precedence. The toolbar
+  quick filter keeps its own debounce.
+* `DataGridServer()` no longer sets `paginationMode`, `sortingMode`,
+  `filterMode`, and `pagination`: MUI's data source forces them. Passing them
+  still warns that they are ignored.
 * `DataGridServer()` no longer errors when two grids share one `inputId`.
   As with any Shiny input, each grid needs its own `inputId`.
 

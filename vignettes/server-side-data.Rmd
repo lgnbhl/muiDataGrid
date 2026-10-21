@@ -106,7 +106,7 @@ server <- function(input, output, session) {
 shinyApp(ui, server)
 ```
 
-> **Note:** `initialPageSize` must be included in `pageSizeOptions` — an error is raised if not. It also sets the page size for the very first render, before the grid has sent any state to R.
+> **Note:** `initialPageSize` must be included in `pageSizeOptions` — an error is raised if not.
 
 ## Key functions
 
@@ -122,7 +122,7 @@ Renders a DataGrid with server-side pagination, sorting, and filtering.
 | `rowCount` | When provided, `rows` is treated as already paginated and `rowCount` is the total. When NULL (default), pagination is handled automatically from the full `rows` dataset. |
 | `initialPageSize` | Initial rows per page. Must be included in `pageSizeOptions`. Defaults to MUI's default (100) if NULL. |
 | `pageSizeOptions` | Available page size choices. Defaults to MUI's default `c(25, 50, 100)` if NULL. |
-| `filterDebounce` | Milliseconds to wait after typing in the filter panel before requesting data from R. Defaults to 300 ms if NULL. |
+| `filterDebounce` | Milliseconds to wait after typing in the filter panel before requesting data from R. Defaults to 300 ms if NULL. Superseded by MUI's own `filterDebounceMs`, which you can pass via `...` and which takes precedence. |
 | `loading` | Usually not needed: the loading overlay shows automatically while the grid waits for R. `TRUE` forces it on. |
 | `...` | Additional props passed to the MUI DataGrid. |
 
@@ -133,8 +133,8 @@ Applies pagination, sorting, and filtering to a data frame based on `input$<inpu
 | Parameter | Description |
 |---|---|
 | `data` | The full data frame. |
-| `params` | `input$<inputId>` from `DataGridServer` (NULL on first render). |
-| `pageSize` | Page size used on first render before the grid sends state. Should match `initialPageSize`. Defaults to 100. |
+| `params` | `input$<inputId>` from `DataGridServer` (NULL until the grid has requested its first page). |
+| `pageSize` | Page size used while `params` is NULL. In a Shiny session the grid requests its first page right away, so this rarely matters. Defaults to 100. |
 
 Returns a list with:
 
@@ -208,7 +208,7 @@ The grid state is available in `input$<inputId>` as a list with these elements:
 
 - `pagination_model`: list with `page` (0-indexed) and `pageSize`
 - `sort_model`: list of sort items, each with `field` and `sort` ("asc" or "desc")
-- `filter_model`: list with `items`, each containing `field`, `operator`, and `value`; `logicOperator` ("and" or "or"); and, when the toolbar quick filter is used, `quickFilterValues`
+- `filter_model`: list with `items`, the filters MUI applies (an item still waiting for a value is left out), each containing `field`, `operator`, and `value`; `logicOperator` ("and" or "or"); and, when the toolbar quick filter is used, `quickFilterValues`
 - `quick_filter_fields`: only while the quick filter is active, the columns it searches, each with `field` and `type`. `processGridParams()` uses it; in manual mode, use it to search the same columns in your own query.
 - `request_id`: identifies the grid's data request. `DataGridServer()` sends it back automatically; you never need to handle it.
 
